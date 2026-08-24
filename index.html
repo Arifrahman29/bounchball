@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bounce Classic Fan Game</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#222;font-family:monospace;color:#fff;display:grid;place-items:center;min-height:100vh}
+#wrap{width:min(900px,100vw);padding:14px;text-align:center}canvas{width:100%;image-rendering:pixelated;border:8px solid #aaa;background:#d9e8c8;box-shadow:0 0 0 4px #333}
+p{margin:10px 0 0;color:#ddd}kbd{background:#555;border-radius:4px;padding:2px 6px}
+</style>
+</head><body><div id="wrap">
+<canvas id="game" width="800" height="480"></canvas>
+<p><kbd>←</kbd> <kbd>→</kbd> bergerak · <kbd>↑</kbd> lompat · <kbd>R</kbd> ulang level</p>
+</div>
+<script>
+const c=document.getElementById("game"),x=c.getContext("2d");
+const W=c.width,H=c.height;
+const keys={}; addEventListener("keydown",e=>{keys[e.key]=true;if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].includes(e.key))e.preventDefault()});
+addEventListener("keyup",e=>keys[e.key]=false);
+
+const level=[
+[0,440,800,40],[70,360,150,22],[285,310,120,22],[460,365,180,22],
+[610,275,110,22],[120,230,100,22],[300,175,135,22],[510,125,190,22],
+[735,380,65,22]
+];
+const spikes=[[225,418,55],[650,418,70],[395,288,55],[720,253,55]];
+const rings=[[130,315],[185,315],[335,265],[385,265],[520,320],[575,320],[655,230],[170,185],[355,130],[400,130],[560,80],[625,80]];
+let ball,score,won,cam;
+function reset(){
+ ball={x:45,y:400,r:16,vx:0,vy:0,on:false};score=0;won=false;cam=0;
+ for(const r of rings)r[2]=false;
+}
+reset();
+
+function rectHitCircle(b,r){
+ let nx=Math.max(r[0],Math.min(b.x,r[0]+r[2])),ny=Math.max(r[1],Math.min(b.y,r[1]+r[3]));
+ let dx=b.x-nx,dy=b.y-ny;return dx*dx+dy*dy<b.r*b.r;
+}
+function update(){
+ if(keys.r||keys.R){reset();keys.r=keys.R=false}
+ if(won)return;
+ ball.vx+=(keys.ArrowLeft?-0.55:0)+(keys.ArrowRight?0.55:0);
+ ball.vx*=0.91; ball.vx=Math.max(-6,Math.min(6,ball.vx));
+ if((keys.ArrowUp)&&ball.on){ball.vy=-10;ball.on=false}
+ ball.vy+=0.48;ball.vy=Math.min(12,ball.vy);
+ ball.x+=ball.vx; ball.on=false;
+ for(const r of level){
+   if(rectHitCircle(ball,r)){
+    if(ball.vx>0)ball.x=r[0]-ball.r; else ball.x=r[0]+r[2]+ball.r;
+    ball.vx*=-0.45;
+   }
+ }
+ ball.y+=ball.vy;
+ for(const r of level){
+   if(rectHitCircle(ball,r)){
+    if(ball.vy>0){ball.y=r[1]-ball.r;ball.vy*=-0.18;ball.on=true}
+    else {ball.y=r[1]+r[3]+ball.r;ball.vy=0}
+   }
+ }
+ for(const s of spikes){
+  if(ball.x+ball.r>s[0]&&ball.x-ball.r<s[0]+s[2]&&ball.y+ball.r>s[1]-22&&ball.y-ball.r<s[1])reset();
+ }
+ for(const r of rings)if(!r[2]&&Math.hypot(ball.x-r[0],ball.y-r[1])<ball.r+12){r[2]=true;score++}
+ if(ball.x>765&&ball.y>330&&score===rings.length)won=true;
+ if(ball.y>H+50)reset();
+}
+function draw(){
+ x.clearRect(0,0,W,H);
+ x.fillStyle="#dcebcf";x.fillRect(0,0,W,H);
+ // subtle scanline/classic background
+ x.fillStyle="rgba(0,0,0,.035)";for(let y=0;y<H;y+=4)x.fillRect(0,y,W,1);
+ // platforms
+ for(const r of level){x.fillStyle="#3c4a3d";x.fillRect(...r);x.fillStyle="#72856d";x.fillRect(r[0],r[1],r[2],4)}
+ // spikes
+ for(const s of spikes){x.fillStyle="#3a3a3a";for(let i=s[0];i<s[0]+s[2];i+=14){x.beginPath();x.moveTo(i,s[1]);x.lineTo(i+7,s[1]-20);x.lineTo(i+14,s[1]);x.fill()}}
+ // rings
+ for(const r of rings)if(!r[2]){x.strokeStyle="#e4c534";x.lineWidth=5;x.beginPath();x.arc(r[0],r[1],11,0,Math.PI*2);x.stroke()}
+ // finish
+ x.fillStyle="#eee";x.fillRect(770,310,5,130);x.fillStyle="#d33";x.fillRect(775,310,25,20);
+ // ball
+ x.save();x.translate(ball.x,ball.y);x.fillStyle="#d92727";x.beginPath();x.arc(0,0,ball.r,0,Math.PI*2);x.fill();
+ x.strokeStyle="#8b1010";x.lineWidth=2;x.stroke();x.fillStyle="#ff7777";x.beginPath();x.arc(-5,-6,5,0,Math.PI*2);x.fill();x.restore();
+ // HUD
+ x.fillStyle="#273027";x.fillRect(12,12,190,46);x.fillStyle="#fff";x.font="bold 20px monospace";x.fillText("RINGS "+score+"/"+rings.length,25,42);
+ if(score<rings.length){x.fillStyle="rgba(0,0,0,.7)";x.fillRect(215,18,365,34);x.fillStyle="#fff";x.font="14px monospace";x.fillText("Kumpulkan semua cincin untuk finish",225,40)}
+ if(won){x.fillStyle="rgba(0,0,0,.78)";x.fillRect(190,150,420,180);x.fillStyle="#fff";x.font="bold 38px monospace";x.fillText("LEVEL COMPLETE!",245,225);x.font="20px monospace";x.fillText("Tekan R untuk main lagi",275,270)}
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script></body></html>
