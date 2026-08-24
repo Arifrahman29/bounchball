@@ -60,16 +60,16 @@ document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 
 // ---------- Fisika (diperhalus lagi: akselerasi lebih landai, kecepatan
 //            puncak lebih rendah, gravitasi & lompatan lebih lembut) ----------
-const GRAVITY = 0.44;
-const FRICTION_GROUND = 0.86;
-const FRICTION_AIR = 0.94;
-const ACCEL = 0.42;
-const RUN_ACCEL = 0.6;
-const MAX_WALK_SPEED = 3.5;
-const MAX_RUN_SPEED = 6.0;
-const JUMP_FORCE = -10.4;
-const RUN_JUMP_BONUS = -0.9;
-const MAX_FALL_SPEED = 11;
+const GRAVITY = 0.38;
+const FRICTION_GROUND = 0.88;
+const FRICTION_AIR = 0.95;
+const ACCEL_EASE = 0.11;     // seberapa cepat vx mendekati target (eased, bukan linear)
+const RUN_ACCEL_EASE = 0.15;
+const MAX_WALK_SPEED = 2.9;
+const MAX_RUN_SPEED = 5.0;
+const JUMP_FORCE = -9.6;
+const RUN_JUMP_BONUS = -0.7;
+const MAX_FALL_SPEED = 10;
 const COYOTE_FRAMES = 7;
 const JUMP_BUFFER_FRAMES = 7;
 
@@ -400,8 +400,9 @@ function loadStage(index) {
     platforms = stage.platforms.map(p => ({...p, used: false, bump: 0, move: p.move ? {...p.move} : null, dx:0, dy:0}));
     enemies = stage.enemies.map(e => ({
         ...e, alive: true, squish: 0,
+        w: e.type === 'koopa' ? 26 : 26, h: e.type === 'koopa' ? 34 : 24,
         koopaState: e.type === 'koopa' ? 'walk' : null,
-        vx: (Math.random() > 0.5 ? 1 : -1) * (e.type === 'koopa' ? 0.6 + Math.random()*0.4 : 0.7 + Math.random() * 0.5),
+        vx: (Math.random() > 0.5 ? 1 : -1) * (e.type === 'koopa' ? 0.55 + Math.random()*0.35 : 0.6 + Math.random() * 0.4),
         vy: 0, onGround: false, walkPhase: Math.random()*10
     }));
     coins = stage.coins.map(c => ({...c, collected: false}));
@@ -623,19 +624,21 @@ function update() {
     if (keys['arrowleft']) moveX = -1;
     if (keys['arrowright']) moveX = 1;
 
-    const accel = running ? RUN_ACCEL : ACCEL;
+    const easeRate = (running ? RUN_ACCEL_EASE : ACCEL_EASE) * (player.onGround ? 1 : 0.65);
     const maxSpeed = running ? MAX_RUN_SPEED : MAX_WALK_SPEED;
 
     player.skid = player.onGround && moveX !== 0 && player.vx !== 0 &&
-                  Math.sign(moveX) !== Math.sign(player.vx) && Math.abs(player.vx) > 1.5;
+                  Math.sign(moveX) !== Math.sign(player.vx) && Math.abs(player.vx) > 1.2;
 
     if (moveX !== 0) {
-        player.vx += moveX * accel;
-        if (Math.abs(player.vx) > maxSpeed) player.vx = moveX * maxSpeed;
+        // easing eksponensial menuju kecepatan target -> kurva percepatan halus,
+        // tidak "nyentak" seperti penambahan linear + clamp mendadak
+        const target = moveX * maxSpeed;
+        player.vx += (target - player.vx) * easeRate;
         player.facing = moveX;
     } else {
         player.vx *= player.onGround ? FRICTION_GROUND : FRICTION_AIR;
-        if (Math.abs(player.vx) < 0.08) player.vx = 0;
+        if (Math.abs(player.vx) < 0.06) player.vx = 0;
     }
 
     if (player.onGround && Math.abs(player.vx) > 0.2) {
@@ -1141,7 +1144,9 @@ function draw() {
 
     for (const p of platforms) {
         const dx = drawX(p.x);
-        if (dx < -140 || dx > W + 20) continue;
+        // cek kedua sisi platform (bukan cuma sisi kiri) supaya segmen tanah
+        // lebar tidak hilang selagi sebagian masih terlihat di layar
+        if (dx + p.w < -20 || dx > W + 20) continue;
         const by = p.y - (p.bump || 0);
 
         if (p.type.startsWith('ground') || p.type.startsWith('stair')) {
