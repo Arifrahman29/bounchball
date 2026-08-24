@@ -10,7 +10,7 @@ body{background:#0a0a1a;display:flex;justify-content:center;align-items:center;m
 #wrap{position:relative;width:min(1000px,100vw);padding:10px}
 #gameContainer{background:#000;border-radius:16px;padding:8px;box-shadow:0 0 80px rgba(0,150,255,0.2), inset 0 0 40px rgba(0,0,0,0.5)}
 canvas{display:block;width:100%;image-rendering:pixelated;background:#5c94fc;border-radius:8px}
-#controls{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding:12px 20px;background:rgba(10,10,26,0.95);border-radius:12px;border:1px solid #2a2a4a}
+#controls{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding:12px 20px;background:rgba(10,10,26,0.95);border-radius:12px;border:1px solid #2a2a4a;flex-wrap:wrap;gap:8px}
 #controls kbd{background:#1a1a3a;color:#4fc3f7;padding:6px 14px;border-radius:6px;font-size:13px;border:2px solid #3a3a5a;font-weight:bold;min-width:40px;text-align:center}
 #controls span{color:#666;font-size:13px;margin:0 4px}
 #status{color:#4fc3f7;font-size:14px;font-weight:bold;display:flex;gap:20px;align-items:center}
@@ -26,42 +26,50 @@ canvas{display:block;width:100%;image-rendering:pixelated;background:#5c94fc;bor
 </div>
 <div id="controls">
 <div>
-<kbd>←</kbd><kbd>→</kbd> <span>|</span> <kbd>↑</kbd><kbd>Z</kbd> <span>|</span> <kbd>R</kbd>
+<kbd>←</kbd><kbd>→</kbd> <span>|</span> <kbd>↑</kbd><kbd>Z</kbd> <span>lompat</span> <span>|</span> <kbd>SHIFT</kbd> <span>lari</span> <span>|</span> <kbd>R</kbd> <span>ulang</span>
 </div>
 <div id="status">
 <span><span class="label">❤️</span> <span class="value" id="livesDisplay">3</span></span>
 <span><span class="label">🪙</span> <span class="value" id="coinDisplay">0</span></span>
 <span><span class="label">🏆</span> <span class="value" id="scoreDisplay">0</span></span>
 <span><span class="label">🌟</span> <span class="value" id="stageDisplay">1-1</span></span>
+<span id="powerDisplay" style="color:#8bffb0"></span>
 </div>
 </div>
-<div id="hint">Lompati jurang, jangan sentuh Goomba dari samping — injak dari atas!</div>
+<div id="hint">Lompati jurang, injak Goomba dari atas, ambil jamur dari blok "?" untuk jadi besar! Tahan SHIFT untuk lari.</div>
 </div>
 <script>
 // ============================================================
-//  SUPER MARIO BROS - CLASSIC EDITION
+//  SUPER MARIO BROS - CLASSIC EDITION (versi diperhalus)
 // ============================================================
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const W = 960, H = 480;
 const GROUND_Y = 420;
-const T = 32; // ukuran tile
+const T = 32;
 
 // ---------- Keyboard ----------
 const keys = {};
 document.addEventListener('keydown', e => {
     keys[e.key.toLowerCase()] = true;
-    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault();
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' ','Shift'].includes(e.key)) e.preventDefault();
 });
 document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 
-// ---------- Fisika ----------
-const GRAVITY = 0.55;
-const FRICTION = 0.80;
-const MAX_WALK_SPEED = 4.8;
-const JUMP_FORCE = -10.8;
-const MAX_FALL_SPEED = 12;
+// ---------- Fisika (diperhalus: akselerasi bertahap, lari, coyote time, jump buffer) ----------
+const GRAVITY = 0.52;
+const FRICTION_GROUND = 0.84;
+const FRICTION_AIR = 0.92;
+const ACCEL = 0.62;
+const RUN_ACCEL = 0.85;
+const MAX_WALK_SPEED = 4.2;
+const MAX_RUN_SPEED = 7.4;
+const JUMP_FORCE = -11.2;
+const RUN_JUMP_BONUS = -1.0;
+const MAX_FALL_SPEED = 13;
+const COYOTE_FRAMES = 7;
+const JUMP_BUFFER_FRAMES = 7;
 
 function rectCollide(a, b) {
     return a.x < b.x + b.w && a.x + a.w > b.x &&
@@ -70,16 +78,17 @@ function rectCollide(a, b) {
 
 // ---------- Palet warna gaya NES ----------
 const PAL = {
-    marioRed: '#D82800', marioRedDark: '#A81C00',
-    marioBlue: '#0058F8', marioBlueDark: '#0038B8',
-    skin: '#F8D8A8', hair: '#402000',
+    marioRed: '#D82800', marioRedDark: '#941600',
+    marioBlue: '#0058F8', marioBlueDark: '#002888',
+    skin: '#F8B888', skinShade:'#D88858', hair: '#5c2e0e', hairDark:'#3a1a06',
     white: '#FCFCFC', buttonYellow: '#F8B800',
-    brick: '#C84C0C', brickDark: '#943C00',
-    block: '#FCA044', blockDark: '#B87818',
-    pipeLight: '#00D800', pipeBody: '#00A800', pipeDark: '#005800',
-    goomba: '#C84C0C', goombaDark: '#7C2C00', goombaFoot: '#501800',
-    groundTop: '#6AAA4A', groundBody: '#8A7A5A',
-    castleGray: '#8a8a8a', castleDark:'#5a5a5a'
+    brick: '#C84C0C', brickDark: '#943C00', brickLight:'#E8703C',
+    block: '#FCA044', blockDark: '#B87818', blockLight:'#FFD080',
+    pipeLight: '#3CE83C', pipeBody: '#00A800', pipeDark: '#005800',
+    goomba: '#C86428', goombaDark: '#7C2C00', goombaFoot: '#3a1608', goombaBelly:'#F0A868',
+    groundTop: '#6AAA4A', groundTopDark:'#4a8a2a', groundBody: '#A8703C', groundBodyDark:'#7a4e24',
+    castleGray: '#9a9a9a', castleDark:'#5a5a5a',
+    mushCap:'#E8000C', mushCapDark:'#a80000', mushSpot:'#FCFCFC', mushStem:'#FCE0B4', mushStemShade:'#D8A868'
 };
 
 // ---------- Helper: bikin segmen tanah dengan jurang ----------
@@ -96,7 +105,6 @@ function groundWithGaps(totalWidth, gaps, type='ground') {
 }
 
 function staircase(startX, steps, dir, groundType, stepW=32) {
-    // dir=1 menaik ke kanan, dir=-1 menurun ke kanan
     const out = [];
     for (let i = 0; i < steps; i++) {
         const h = dir === 1 ? (i+1)*stepW : (steps-i)*stepW;
@@ -106,10 +114,10 @@ function staircase(startX, steps, dir, groundType, stepW=32) {
 }
 
 // ============================================================
-//  STAGE 1-1 — layout mengikuti struktur level ikonik aslinya:
-//  goomba pembuka -> blok bata/koin -> pipa naik tinggi -> jurang
-//  pertama -> area goomba & koin -> jurang kedua -> tangga naik
-//  turun -> bendera -> kastil
+//  STAGE 1-1 — layout dirapikan lebih dekat ke struktur ikonik
+//  aslinya: blok jamur rahasia di awal -> deretan bata/koin ->
+//  pipa naik bertingkat (2,3,4 tile) -> jurang pertama -> area
+//  goomba & koin -> jurang kedua -> tangga naik-turun -> bendera
 // ============================================================
 const LV11_WIDTH = 2680;
 const LV11_GAPS = [[720,808],[1660,1780]];
@@ -119,23 +127,24 @@ const stage11 = {
     levelWidth: LV11_WIDTH,
     platforms: [
         ...groundWithGaps(LV11_WIDTH, LV11_GAPS),
-        // blok tunggal awal (isolated block, khas 1-1)
-        {x:176, y:296, w:32, h:32, type:'question', coin:true},
-        // deretan 4 blok klasik
+        // blok tunggal awal berisi JAMUR (klasik!)
+        {x:176, y:296, w:32, h:32, type:'question', item:'mushroom'},
+        // deretan 4 blok klasik (bata - koin - bata - koin)
         {x:352, y:296, w:32, h:32, type:'brick'},
-        {x:384, y:296, w:32, h:32, type:'question', coin:true},
+        {x:384, y:296, w:32, h:32, type:'question', item:'coin'},
         {x:416, y:296, w:32, h:32, type:'brick'},
-        {x:448, y:296, w:32, h:32, type:'question', coin:true},
-        // pipa bertingkat (pendek -> sedang -> tinggi)
+        {x:448, y:296, w:32, h:32, type:'question', item:'coin'},
+        // pipa bertingkat naik 2,3,4 tile (persis pola aslinya)
         {x:560, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
         {x:660, y:GROUND_Y-96, w:56, h:96, type:'pipe'},
+        {x:770, y:GROUND_Y-128, w:56, h:128, type:'pipe'},
         // setelah jurang pertama: blok + platform layang
-        {x:900, y:296, w:32, h:32, type:'question', coin:true},
+        {x:900, y:296, w:32, h:32, type:'question', item:'coin'},
         {x:932, y:296, w:32, h:32, type:'brick'},
-        {x:964, y:296, w:32, h:32, type:'question', coin:true},
+        {x:964, y:296, w:32, h:32, type:'question', item:'coin'},
         {x:1080, y:260, w:96, h:20, type:'platform'},
         {x:1260, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
-        {x:1420, y:296, w:32, h:32, type:'question', coin:true},
+        {x:1420, y:296, w:32, h:32, type:'question', item:'mushroom'},
         {x:1452, y:296, w:32, h:32, type:'brick'},
         // setelah jurang kedua: tangga naik lalu turun menuju bendera
         ...staircase(1860, 4, 1, 'gnd'),
@@ -160,25 +169,24 @@ const stage11 = {
     flag: {x:2440, y:340, height:80}
 };
 
-// ---------- Stage 1-2 : Overworld lanjutan, ada jurang & pipa piramida ----------
 const LV12_WIDTH = 1900;
 const stage12 = {
     name: '1-2', theme:'overworld', bgColor1:'#5C94FC', bgColor2:'#8fb8ff',
     levelWidth: LV12_WIDTH,
     platforms: [
         ...groundWithGaps(LV12_WIDTH, [[560,648],[1180,1276]]),
-        {x:120, y:296, w:32, h:32, type:'question', coin:true},
+        {x:120, y:296, w:32, h:32, type:'question', item:'coin'},
         {x:152, y:296, w:32, h:32, type:'brick'},
-        {x:184, y:296, w:32, h:32, type:'question', coin:true},
+        {x:184, y:296, w:32, h:32, type:'question', item:'mushroom'},
         {x:280, y:236, w:80, h:20, type:'platform'},
         {x:420, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
         {x:490, y:GROUND_Y-96, w:56, h:96, type:'pipe'},
         {x:720, y:296, w:32, h:32, type:'brick'},
-        {x:752, y:296, w:32, h:32, type:'question', coin:true},
+        {x:752, y:296, w:32, h:32, type:'question', item:'coin'},
         {x:784, y:296, w:32, h:32, type:'brick'},
         {x:880, y:230, w:64, h:20, type:'platform'},
         {x:1000, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
-        {x:1340, y:296, w:32, h:32, type:'question', coin:true},
+        {x:1340, y:296, w:32, h:32, type:'question', item:'coin'},
         {x:1372, y:296, w:32, h:32, type:'brick'},
         ...staircase(1500, 3, 1, 'gnd'),
         ...staircase(1596, 3, -1, 'gnd'),
@@ -197,20 +205,19 @@ const stage12 = {
     flag: {x:1830, y:340, height:80}
 };
 
-// ---------- Stage 1-3 : Sky/platform stage dengan tangga akhir ----------
 const stage13 = {
     name: '1-3', theme:'overworld', bgColor1:'#5C94FC', bgColor2:'#8fb8ff',
     levelWidth: 1550,
     platforms: [
         ...groundWithGaps(1550, [[420,520],[900,1000]]),
-        {x:100, y:296, w:32, h:32, type:'question', coin:true},
+        {x:100, y:296, w:32, h:32, type:'question', item:'coin'},
         {x:200, y:340, w:80, h:20, type:'platform'},
         {x:340, y:260, w:64, h:20, type:'platform'},
         {x:600, y:296, w:32, h:32, type:'brick'},
-        {x:632, y:296, w:32, h:32, type:'question', coin:true},
+        {x:632, y:296, w:32, h:32, type:'question', item:'mushroom'},
         {x:664, y:296, w:32, h:32, type:'brick'},
         {x:740, y:240, w:80, h:20, type:'platform'},
-        {x:1060, y:296, w:32, h:32, type:'question', coin:true},
+        {x:1060, y:296, w:32, h:32, type:'question', item:'coin'},
         {x:1092, y:296, w:32, h:32, type:'brick'},
         {x:1160, y:340, w:96, h:20, type:'platform'},
         ...staircase(1300, 4, 1, 'gnd'),
@@ -226,22 +233,21 @@ const stage13 = {
     flag: {x:1480, y:250, height:170}
 };
 
-// ---------- Stage 2-1 : Underground ----------
 const stage21 = {
     name: '2-1', theme:'underground', bgColor1:'#0a0a1a', bgColor2:'#1a1a3a',
     levelWidth: 1700,
     platforms: [
         ...groundWithGaps(1700, [[640,720]], 'ground_u'),
         {x:80, y:296, w:32, h:32, type:'brick_u'},
-        {x:112, y:296, w:32, h:32, type:'question', coin:true},
+        {x:112, y:296, w:32, h:32, type:'question', item:'coin'},
         {x:144, y:296, w:32, h:32, type:'brick_u'},
         {x:280, y:340, w:96, h:20, type:'platform_u'},
-        {x:440, y:296, w:32, h:32, type:'question', coin:true},
+        {x:440, y:296, w:32, h:32, type:'question', item:'mushroom'},
         {x:472, y:296, w:32, h:32, type:'brick_u'},
         {x:800, y:260, w:80, h:20, type:'platform_u'},
-        {x:960, y:296, w:32, h:32, type:'question', coin:true},
+        {x:960, y:296, w:32, h:32, type:'question', item:'coin'},
         {x:992, y:296, w:32, h:32, type:'brick_u'},
-        {x:1024, y:296, w:32, h:32, type:'question', coin:true},
+        {x:1024, y:296, w:32, h:32, type:'question', item:'coin'},
         {x:1200, y:340, w:120, h:20, type:'platform_u'},
         {x:1400, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
     ],
@@ -256,17 +262,16 @@ const stage21 = {
     flag: {x:1620, y:340, height:80}
 };
 
-// ---------- Stage 2-2 : Castle ----------
 const stage22 = {
     name: '2-2', theme:'castle', bgColor1:'#1a0a0a', bgColor2:'#3a1414',
     levelWidth: 1750,
     platforms: [
         ...groundWithGaps(1750, [[500,580],[1100,1190]], 'ground_c'),
-        {x:100, y:296, w:32, h:32, type:'question', coin:true},
+        {x:100, y:296, w:32, h:32, type:'question', item:'coin'},
         {x:132, y:296, w:32, h:32, type:'brick_c'},
         {x:250, y:250, w:80, h:20, type:'platform_c'},
         {x:660, y:296, w:32, h:32, type:'brick_c'},
-        {x:692, y:296, w:32, h:32, type:'question', coin:true},
+        {x:692, y:296, w:32, h:32, type:'question', item:'mushroom'},
         {x:724, y:296, w:32, h:32, type:'brick_c'},
         {x:850, y:230, w:64, h:20, type:'platform_c'},
         ...staircase(1250, 5, 1, 'castle'),
@@ -283,21 +288,20 @@ const stage22 = {
     flag: {x:1690, y:340, height:80}
 };
 
-// ---------- Stage 3-1 : Sunset finale ----------
 const stage31 = {
     name: '3-1', theme:'sunset', bgColor1:'#e0703a', bgColor2:'#ffb85a',
     levelWidth: 2000,
     platforms: [
         ...groundWithGaps(2000, [[440,540],[1000,1120]]),
-        {x:100, y:296, w:32, h:32, type:'question', coin:true},
+        {x:100, y:296, w:32, h:32, type:'question', item:'coin'},
         {x:132, y:296, w:32, h:32, type:'brick'},
         {x:220, y:340, w:80, h:20, type:'platform'},
         {x:600, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
         {x:680, y:GROUND_Y-96, w:56, h:96, type:'pipe'},
         {x:760, y:GROUND_Y-128, w:56, h:128, type:'pipe'},
-        {x:1200, y:296, w:32, h:32, type:'question', coin:true},
+        {x:1200, y:296, w:32, h:32, type:'question', item:'coin'},
         {x:1232, y:296, w:32, h:32, type:'brick'},
-        {x:1264, y:296, w:32, h:32, type:'question', coin:true},
+        {x:1264, y:296, w:32, h:32, type:'question', item:'mushroom'},
         {x:1400, y:250, w:96, h:20, type:'platform'},
         ...staircase(1600, 5, 1, 'gnd'),
         ...staircase(1760, 5, -1, 'gnd'),
@@ -325,6 +329,7 @@ let player = {};
 let enemies = [];
 let coins = [];
 let platforms = [];
+let items = []; // jamur power-up yang sedang aktif
 let flag = {};
 let camera = {x: 0};
 let gameOver = false;
@@ -334,6 +339,8 @@ let deathTimer = 0;
 let stageTransition = 0;
 let particles = [];
 let hills = [], bushes = [];
+
+const SMALL_H = 32, BIG_H = 48, PLAYER_W = 26;
 
 function buildScenery(levelWidth) {
     hills = []; bushes = [];
@@ -348,17 +355,22 @@ function loadStage(index) {
     platforms = stage.platforms.map(p => ({...p, used: false, bump: 0}));
     enemies = stage.enemies.map(e => ({
         ...e, alive: true, squish: 0,
-        vx: (Math.random() > 0.5 ? 1 : -1) * (0.8 + Math.random() * 0.8),
-        vy: 0, onGround: false, startX: e.x, walkPhase: Math.random()*10
+        vx: (Math.random() > 0.5 ? 1 : -1) * (0.7 + Math.random() * 0.5),
+        vy: 0, onGround: false, walkPhase: Math.random()*10
     }));
     coins = stage.coins.map(c => ({...c, collected: false}));
+    items = [];
     flag = {...stage.flag};
     buildScenery(stage.levelWidth);
 
+    const keepSize = player.size || 'small';
     player = {
-        x: 40, y: 390, w: 26, h: 32, vx: 0, vy: 0, onGround: false,
-        facing: 1, frame: 0, frameTimer: 0, invincible: 0, dead: false,
-        flagSliding: false, walkingToCastle: false,
+        x: 40, y: GROUND_Y - (keepSize==='big'?BIG_H:SMALL_H), w: PLAYER_W,
+        h: keepSize==='big'?BIG_H:SMALL_H, size: keepSize,
+        vx: 0, vy: 0, onGround: false,
+        facing: 1, walkPhase: 0, legLift:0, invincible: 0, dead: false,
+        flagSliding: false, walkingToCastle: false, coyote: 0, jumpBuffer: 0,
+        growAnim: 0, skid: false,
         score: player.score || 0, coins: player.coins || 0, lives: player.lives || 3
     };
 
@@ -371,7 +383,7 @@ function loadStage(index) {
 
 function resetGame() {
     currentStageIndex = 0;
-    player = {lives: 3, coins: 0, score: 0};
+    player = {lives: 3, coins: 0, score: 0, size:'small'};
     loadStage(currentStageIndex);
 }
 
@@ -379,6 +391,7 @@ function updateUI() {
     document.getElementById('livesDisplay').textContent = player.lives || 0;
     document.getElementById('coinDisplay').textContent = player.coins || 0;
     document.getElementById('scoreDisplay').textContent = player.score || 0;
+    document.getElementById('powerDisplay').textContent = player.size === 'big' ? '⭐ Super Mario' : '';
 }
 
 function addParticles(x, y, color, count = 8) {
@@ -406,7 +419,29 @@ function updateCamera() {
     let targetCam = player.x - 400;
     if (targetCam < 0) targetCam = 0;
     if (targetCam > maxCam) targetCam = maxCam;
-    camera.x += (targetCam - camera.x) * 0.12;
+    camera.x += (targetCam - camera.x) * 0.14;
+}
+
+function growPlayer() {
+    if (player.size === 'big') { player.score += 200; updateUI(); return; }
+    const oldH = player.h;
+    player.size = 'big';
+    player.h = BIG_H;
+    player.y -= (BIG_H - oldH);
+    player.growAnim = 20;
+    player.invincible = 40;
+    player.score += 1000;
+    updateUI();
+    addParticles(player.x + player.w/2, player.y + player.h/2, '#ffe680', 16);
+}
+
+function shrinkPlayer() {
+    const oldH = player.h;
+    player.size = 'small';
+    player.h = SMALL_H;
+    player.y += (oldH - SMALL_H);
+    player.invincible = 90;
+    updateUI();
 }
 
 // ============================================================
@@ -433,7 +468,7 @@ function update() {
     if (player.dead) {
         deathTimer++;
         if (deathTimer > 60) {
-            if (player.lives > 0) { player.lives--; updateUI(); loadStage(currentStageIndex); }
+            if (player.lives > 0) { player.lives--; player.size='small'; updateUI(); loadStage(currentStageIndex); }
             else gameOver = true;
         }
         return;
@@ -453,8 +488,7 @@ function update() {
 
     if (player.walkingToCastle) {
         player.walkTimer--; player.x += 2.2;
-        player.frameTimer++;
-        if (player.frameTimer > 6) { player.frameTimer = 0; player.frame = (player.frame + 1) % 2; }
+        player.walkPhase += 0.35;
         updateCamera(); updateParticles();
         if (player.walkTimer <= 0) {
             player.walkingToCastle = false; winScreen = true;
@@ -463,26 +497,43 @@ function update() {
         return;
     }
 
+    const running = keys['shift'];
     let moveX = 0;
     if (keys['arrowleft']) moveX = -1;
     if (keys['arrowright']) moveX = 1;
 
+    const accel = running ? RUN_ACCEL : ACCEL;
+    const maxSpeed = running ? MAX_RUN_SPEED : MAX_WALK_SPEED;
+
+    // deteksi skid: berbalik arah cepat saat di darat
+    player.skid = player.onGround && moveX !== 0 && player.vx !== 0 &&
+                  Math.sign(moveX) !== Math.sign(player.vx) && Math.abs(player.vx) > 1.5;
+
     if (moveX !== 0) {
-        player.vx += moveX * 0.55;
-        if (Math.abs(player.vx) > MAX_WALK_SPEED) player.vx = moveX * MAX_WALK_SPEED;
+        player.vx += moveX * accel;
+        if (Math.abs(player.vx) > maxSpeed) player.vx = moveX * maxSpeed;
         player.facing = moveX;
-        if (player.onGround) {
-            player.frameTimer++;
-            if (player.frameTimer > 5) { player.frameTimer = 0; player.frame = (player.frame + 1) % 2; }
-        }
     } else {
-        player.vx *= FRICTION;
-        if (Math.abs(player.vx) < 0.1) player.vx = 0;
-        if (player.onGround) { player.frame = 0; player.frameTimer = 0; }
+        player.vx *= player.onGround ? FRICTION_GROUND : FRICTION_AIR;
+        if (Math.abs(player.vx) < 0.08) player.vx = 0;
     }
 
-    if ((keys['z'] || keys['arrowup']) && player.onGround) { player.vy = JUMP_FORCE; player.onGround = false; }
-    if (!keys['z'] && !keys['arrowup'] && player.vy < -2) player.vy *= 0.85;
+    // gerak kaki halus & terus menerus (bukan loncat 2 frame)
+    if (player.onGround && Math.abs(player.vx) > 0.2) {
+        player.walkPhase += Math.min(Math.abs(player.vx) * 0.11 + 0.08, 0.9);
+    }
+
+    // coyote time + jump buffer -> lompatan terasa lebih responsif & tidak kaku
+    if (player.onGround) player.coyote = COYOTE_FRAMES; else if (player.coyote > 0) player.coyote--;
+    if (keys['z'] || keys['arrowup']) player.jumpBuffer = JUMP_BUFFER_FRAMES; else if (player.jumpBuffer > 0) player.jumpBuffer--;
+
+    if (player.jumpBuffer > 0 && player.coyote > 0) {
+        let jf = JUMP_FORCE;
+        if (Math.abs(player.vx) > MAX_WALK_SPEED * 0.9) jf += RUN_JUMP_BONUS;
+        player.vy = jf; player.onGround = false; player.coyote = 0; player.jumpBuffer = 0;
+        addParticles(player.x + player.w/2, player.y + player.h, '#ffffff', 4);
+    }
+    if (!keys['z'] && !keys['arrowup'] && player.vy < -2) player.vy *= 0.86;
 
     player.vy += GRAVITY;
     if (player.vy > MAX_FALL_SPEED) player.vy = MAX_FALL_SPEED;
@@ -497,22 +548,17 @@ function update() {
     }
 
     player.y += player.vy;
+    const wasOnGround = player.onGround;
     player.onGround = false;
 
     for (const p of platforms) {
         if (rectCollide(player, p)) {
             if (player.vy > 0) {
                 player.y = p.y - player.h; player.vy = 0; player.onGround = true;
+                if (!wasOnGround) addParticles(player.x+player.w/2, player.y+player.h, 'rgba(255,255,255,0.5)', 3);
             } else if (player.vy < 0) {
                 player.y = p.y + p.h; player.vy = 0;
-                if (p.type === 'question' && p.coin && !p.used) {
-                    p.used = true; p.coin = false; p.bump = 8;
-                    player.coins++; player.score += 200; updateUI();
-                    addParticles(p.x + p.w/2, p.y, '#f0c040', 12);
-                } else if (p.type.startsWith('brick')) {
-                    p.bump = 6;
-                    addParticles(p.x + p.w/2, p.y + p.h/2, PAL.brick, 6);
-                }
+                hitBlockFromBelow(p);
             }
         }
     }
@@ -532,38 +578,8 @@ function update() {
         if (p.bump) { p.bump *= 0.7; if (Math.abs(p.bump) < 0.3) p.bump = 0; }
     }
 
-    for (const e of enemies) {
-        if (!e.alive) continue;
-        if (e.squish > 0) { e.squish--; if (e.squish <= 0) e.alive = false; continue; }
-
-        e.walkPhase += 0.15;
-        e.x += e.vx;
-        e.vy += GRAVITY;
-        e.y += e.vy;
-        e.onGround = false;
-
-        for (const p of platforms) {
-            if (rectCollide(e, p)) {
-                if (e.vy > 0) { e.y = p.y - e.h; e.vy = 0; e.onGround = true; }
-                else if (e.vy < 0) { e.y = p.y + p.h; e.vy = 0; }
-                if (e.vx > 0 && e.x + e.w > p.x && e.x < p.x) { e.x = p.x - e.w; e.vx *= -1; }
-                else if (e.vx < 0 && e.x < p.x + p.w && e.x + e.w > p.x + p.w) { e.x = p.x + p.w; e.vx *= -1; }
-            }
-        }
-
-        if (e.y > H + 80) e.alive = false;
-
-        if (!player.invincible && !player.dead && rectCollide(player, e)) {
-            if (player.vy > 0 && player.y + player.h - e.y < 30) {
-                e.squish = 14; e.vx = 0;
-                player.vy = -8; player.score += 500; updateUI();
-                addParticles(e.x + e.w/2, e.y + e.h/2, PAL.goombaDark, 12);
-            } else {
-                player.dead = true; player.vy = -8; deathTimer = 0;
-                player.lives--; updateUI();
-            }
-        }
-    }
+    updateItems();
+    updateEnemies();
 
     if (!player.dead && !player.flagSliding) {
         const dx = player.x + player.w/2 - flag.x;
@@ -578,67 +594,201 @@ function update() {
 
     updateCamera();
     if (player.invincible > 0) player.invincible--;
+    if (player.growAnim > 0) player.growAnim--;
     updateParticles();
 }
 
-// ============================================================
-//  DRAW HELPERS - SPRITES (flat, tanpa shadow blur, gaya NES)
-// ============================================================
-function drawMario(dx, dy, w, h, facing, frame, onGround, jumping) {
-    ctx.save();
-    ctx.translate(dx + w/2, dy + h/2);
-    if (facing < 0) ctx.scale(-1, 1);
+function hitBlockFromBelow(p) {
+    if (p.type === 'question' && p.item && !p.used) {
+        p.used = true; p.bump = 8;
+        if (p.item === 'coin') {
+            player.coins++; player.score += 200; updateUI();
+            addParticles(p.x + p.w/2, p.y, '#f0c040', 12);
+        } else if (p.item === 'mushroom') {
+            spawnMushroom(p);
+            addParticles(p.x + p.w/2, p.y, '#f0c040', 8);
+        }
+    } else if (p.type.startsWith('brick')) {
+        p.bump = 6;
+        addParticles(p.x + p.w/2, p.y + p.h/2, PAL.brick, 6);
+    }
+}
 
-    const legOffset = jumping ? 0 : (onGround ? (frame === 1 ? 3 : -3) : 0);
+function spawnMushroom(block) {
+    items.push({
+        type: 'mushroom', x: block.x + block.w/2 - 12, y: block.y - 4,
+        targetY: block.y - 34, w: 24, h: 24, vx: 0, vy: 0,
+        state: 'rising'
+    });
+}
+
+function updateItems() {
+    for (let i = items.length - 1; i >= 0; i--) {
+        const it = items[i];
+        if (it.state === 'rising') {
+            it.y -= 1.1;
+            if (it.y <= it.targetY) { it.y = it.targetY; it.state = 'active'; it.vx = 1.6; }
+        } else {
+            it.vy += GRAVITY * 0.7;
+            it.x += it.vx;
+            for (const p of platforms) {
+                if (rectCollide(it, p)) {
+                    if (it.vx > 0) { it.x = p.x - it.w; it.vx *= -1; }
+                    else if (it.vx < 0) { it.x = p.x + p.w; it.vx *= -1; }
+                }
+            }
+            it.y += it.vy;
+            for (const p of platforms) {
+                if (rectCollide(it, p)) {
+                    if (it.vy > 0) { it.y = p.y - it.h; it.vy = 0; }
+                    else if (it.vy < 0) { it.y = p.y + p.h; it.vy = 0; }
+                }
+            }
+            if (it.y > H + 80) { items.splice(i,1); continue; }
+            if (!player.dead && rectCollide(player, it)) {
+                growPlayer();
+                items.splice(i,1);
+            }
+        }
+    }
+}
+
+function updateEnemies() {
+    for (const e of enemies) {
+        if (!e.alive) continue;
+        if (e.squish > 0) { e.squish--; if (e.squish <= 0) e.alive = false; continue; }
+
+        e.walkPhase += 0.14;
+        e.x += e.vx;
+        e.vy += GRAVITY;
+        e.y += e.vy;
+        e.onGround = false;
+
+        for (const p of platforms) {
+            if (rectCollide(e, p)) {
+                if (e.vy > 0) { e.y = p.y - e.h; e.vy = 0; e.onGround = true; }
+                else if (e.vy < 0) { e.y = p.y + p.h; e.vy = 0; }
+                if (e.vx > 0 && e.x + e.w > p.x && e.x < p.x) { e.x = p.x - e.w; e.vx *= -1; }
+                else if (e.vx < 0 && e.x < p.x + p.w && e.x + e.w > p.x + p.w) { e.x = p.x + p.w; e.vx *= -1; }
+            }
+        }
+
+        if (e.y > H + 80) { e.alive = false; continue; }
+
+        if (!player.invincible && !player.dead && rectCollide(player, e)) {
+            if (player.vy > 0 && player.y + player.h - e.y < 30) {
+                e.squish = 14; e.vx = 0;
+                player.vy = -8; player.score += 500; updateUI();
+                addParticles(e.x + e.w/2, e.y + e.h/2, PAL.goombaDark, 12);
+            } else if (player.size === 'big') {
+                shrinkPlayer();
+                addParticles(player.x + player.w/2, player.y + player.h/2, '#ff5050', 10);
+            } else {
+                player.dead = true; player.vy = -8; deathTimer = 0;
+                player.lives--; updateUI();
+            }
+        }
+    }
+}
+
+// ============================================================
+//  DRAW HELPERS - SPRITES (kurva halus, shading berlapis)
+// ============================================================
+function roundRect(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+}
+
+function drawMario(dx, dy, w, h, facing, legPhase, onGround, jumping, skid, big, growAnim) {
+    ctx.save();
+    const scaleBoost = growAnim ? 1 + Math.sin(growAnim*0.9)*0.06 : 1;
+    ctx.translate(dx + w/2, dy + h/2);
+    ctx.scale((facing < 0 ? -1 : 1) * (w/26) * scaleBoost, (h/32) * scaleBoost);
+
+    const legSwing = jumping ? 0 : (onGround ? Math.sin(legPhase) * 5 : 0);
     const armUp = jumping;
+    const bodyH = big ? 15 + 12 : 15; // sedikit lebih panjang saat besar (skala sudah menangani sisanya)
 
     // sepatu
-    ctx.fillStyle = PAL.hair;
-    if (jumping) { ctx.fillRect(-9, 12, 9, 6); ctx.fillRect(2, 12, 9, 6); }
-    else { ctx.fillRect(-10 + legOffset, 12, 9, 6); ctx.fillRect(1 - legOffset, 12, 9, 6); }
+    ctx.fillStyle = PAL.hairDark;
+    if (jumping) { roundRect(-9.5,11,9,7,2); ctx.fill(); roundRect(1.5,11,9,7,2); ctx.fill(); }
+    else if (skid) { roundRect(-11,11,20,7,2); ctx.fill(); }
+    else {
+        roundRect(-10+legSwing*0.6, 11, 9, 7, 2); ctx.fill();
+        roundRect(1-legSwing*0.6, 11, 9, 7, 2); ctx.fill();
+    }
 
-    // overall (kaki + badan)
+    // celana overall (kaki + badan)
     ctx.fillStyle = PAL.marioBlue;
-    if (jumping) { ctx.fillRect(-8, -2, 7, 15); ctx.fillRect(1, -2, 7, 15); }
-    else { ctx.fillRect(-9 + legOffset, -2, 7, 15); ctx.fillRect(2 - legOffset, -2, 7, 15); }
-    ctx.fillRect(-9, -4, 18, 10);
+    if (jumping) { roundRect(-8,-2,7,14,2); ctx.fill(); roundRect(1,-2,7,14,2); ctx.fill(); }
+    else if (skid) { roundRect(-9,-2,18,14,2); ctx.fill(); }
+    else {
+        roundRect(-9+legSwing*0.5, -2, 7, 14, 2); ctx.fill();
+        roundRect(2-legSwing*0.5, -2, 7, 14, 2); ctx.fill();
+    }
+    roundRect(-9, -5, 18, 10, 3); ctx.fill();
+
+    // bayangan sisi badan
+    ctx.fillStyle = PAL.marioBlueDark;
+    roundRect(-9,-5,4,10,2); ctx.fill();
 
     // kancing kuning
     ctx.fillStyle = PAL.buttonYellow;
-    ctx.fillRect(-6, -4, 3, 3); ctx.fillRect(3, -4, 3, 3);
+    ctx.beginPath(); ctx.arc(-5,-4,1.7,0,7); ctx.fill();
+    ctx.beginPath(); ctx.arc(4,-4,1.7,0,7); ctx.fill();
 
-    // lengan baju
+    // lengan baju (mengayun berlawanan arah kaki)
+    const armSwing = jumping ? 0 : Math.sin(legPhase + Math.PI) * 3;
     ctx.fillStyle = PAL.marioRed;
-    if (armUp) { ctx.fillRect(-13, -14, 6, 10); ctx.fillRect(7, -3, 6, 8); }
-    else { ctx.fillRect(-13, -3, 6, 9); ctx.fillRect(7, -3, 6, 9); }
+    if (armUp) { roundRect(-14,-15,6,11,2); ctx.fill(); roundRect(8,-4,6,9,2); ctx.fill(); }
+    else { roundRect(-13, -4+armSwing*0.4, 6, 9, 2); ctx.fill(); roundRect(7, -4-armSwing*0.4, 6, 9, 2); ctx.fill(); }
 
-    // sarung tangan
+    // sarung tangan putih
     ctx.fillStyle = PAL.white;
-    if (armUp) ctx.fillRect(-13, -18, 6, 6);
-    else { ctx.fillRect(-14, 4, 6, 5); ctx.fillRect(8, 4, 6, 5); }
+    if (armUp) { ctx.beginPath(); ctx.arc(-11,-18,3.4,0,7); ctx.fill(); }
+    else {
+        ctx.beginPath(); ctx.arc(-11, 4+armSwing*0.4, 3.2, 0, 7); ctx.fill();
+        ctx.beginPath(); ctx.arc(11, 4-armSwing*0.4, 3.2, 0, 7); ctx.fill();
+    }
 
-    // dada baju
+    // dada kemeja merah
     ctx.fillStyle = PAL.marioRed;
-    ctx.fillRect(-9, -8, 18, 5);
+    roundRect(-9, -9, 18, 5, 2); ctx.fill();
 
     // wajah
     ctx.fillStyle = PAL.skin;
-    ctx.fillRect(-8, -20, 17, 12);
+    roundRect(-8, -21, 17, 13, 4); ctx.fill();
+    ctx.fillStyle = PAL.skinShade;
+    roundRect(-8, -12, 17, 3, 2); ctx.fill();
+
+    // rambut samping / cambang
     ctx.fillStyle = PAL.hair;
-    ctx.fillRect(-9, -16, 4, 7); // jambang
-    ctx.fillRect(-3, -11, 12, 3); // kumis
-    ctx.fillRect(-4, -13, 4, 3);
+    roundRect(-9, -17, 4, 8, 2); ctx.fill();
+    // kumis
+    ctx.fillStyle = PAL.hairDark;
+    roundRect(-3, -12, 12, 3, 1); ctx.fill();
+    roundRect(-4, -14, 5, 3, 1); ctx.fill();
+    // hidung
     ctx.fillStyle = PAL.skin;
-    ctx.fillRect(7, -13, 4, 4); // hidung
+    ctx.beginPath(); ctx.ellipse(9,-13,4,3.4,0,0,7); ctx.fill();
+    // mata
     ctx.fillStyle = '#1a1a1a';
-    ctx.fillRect(1, -16, 3, 3); // mata
+    ctx.beginPath(); ctx.arc(2,-17,1.8,0,7); ctx.fill();
 
     // topi
     ctx.fillStyle = PAL.marioRed;
-    ctx.fillRect(-9, -24, 18, 5);
-    ctx.fillRect(-9, -20, 22, 3);
+    roundRect(-9, -25, 18, 5, 2); ctx.fill();
+    roundRect(-9, -21, 23, 4, 3); ctx.fill();
     ctx.fillStyle = PAL.marioRedDark;
-    ctx.fillRect(0, -21, 5, 2);
+    ctx.beginPath(); ctx.arc(2,-21,4.2,0,7); ctx.fill();
+    ctx.fillStyle = PAL.white;
+    ctx.font = 'bold 6px monospace'; ctx.textAlign='center';
+    ctx.fillText('M', 1, -19);
 
     ctx.restore();
 }
@@ -650,6 +800,9 @@ function drawGoomba(dx, dy, w, h, phase, squish) {
     ctx.scale(1 + sq * 0.5, 1 - sq * 0.7);
     ctx.translate(0, h/2 * sq * 0.6);
 
+    // badan bulat dengan bayangan bawah untuk kesan 3D
+    ctx.fillStyle = PAL.goombaDark;
+    ctx.beginPath(); ctx.ellipse(0, h*0.12, w/2, h/2 * 0.62, 0, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle = PAL.goomba;
     ctx.beginPath();
     ctx.moveTo(-w/2, 0);
@@ -657,30 +810,48 @@ function drawGoomba(dx, dy, w, h, phase, squish) {
     ctx.quadraticCurveTo(w/2, -h/2, w/2, 0);
     ctx.closePath();
     ctx.fill();
-
-    ctx.fillStyle = '#E89858';
-    ctx.fillRect(-w/2+2, 0, w-4, h/2 - 6);
+    ctx.fillStyle = PAL.goombaBelly;
+    ctx.beginPath(); ctx.ellipse(0, -h*0.05, w/2-4, h/2-8, 0, 0, Math.PI*2); ctx.fill();
 
     if (squish <= 0) {
-        const footShift = Math.sin(phase) * 2;
+        const footShift = Math.sin(phase) * 2.5;
         ctx.fillStyle = PAL.goombaFoot;
-        ctx.fillRect(-w/2 + 1 + footShift, h/2 - 6, w/2 - 3, 6);
-        ctx.fillRect(1 - footShift, h/2 - 6, w/2 - 3, 6);
+        roundRect(-w/2 + 1 + footShift, h/2 - 6, w/2 - 3, 6, 2); ctx.fill();
+        roundRect(1 - footShift, h/2 - 6, w/2 - 3, 6, 2); ctx.fill();
 
-        ctx.fillStyle = '#2a1608';
-        ctx.fillRect(-w/2 + 4, -h/2 + 8, 8, 3);
-        ctx.fillRect(2, -h/2 + 8, 8, 3);
+        // alis marah khas goomba
+        ctx.strokeStyle = '#2a1608'; ctx.lineWidth = 2.2; ctx.lineCap='round';
+        ctx.beginPath(); ctx.moveTo(-w/2+3,-h/2+9); ctx.lineTo(-1,-h/2+13); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(w/2-3,-h/2+9); ctx.lineTo(1,-h/2+13); ctx.stroke();
         ctx.fillStyle = '#fff';
-        ctx.fillRect(-w/2 + 4, -h/2 + 11, 7, 7);
-        ctx.fillRect(2, -h/2 + 11, 7, 7);
+        ctx.beginPath(); ctx.ellipse(-w/2+8,-h/2+16,4,4.4,0,0,7); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(w/2-8,-h/2+16,4,4.4,0,0,7); ctx.fill();
         ctx.fillStyle = '#1a1a1a';
-        ctx.fillRect(-w/2 + 7, -h/2 + 14, 3, 4);
-        ctx.fillRect(5, -h/2 + 14, 3, 4);
+        ctx.beginPath(); ctx.arc(-w/2+9,-h/2+17,2,0,7); ctx.fill();
+        ctx.beginPath(); ctx.arc(w/2-9,-h/2+17,2,0,7); ctx.fill();
     } else {
         ctx.strokeStyle = '#2a1608'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(-w/2+5,-2); ctx.lineTo(-w/2+11,4); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(-w/2+11,-2); ctx.lineTo(-w/2+5,4); ctx.stroke();
     }
+    ctx.restore();
+}
+
+function drawMushroom(dx, dy, w, h) {
+    ctx.save();
+    ctx.translate(dx + w/2, dy + h/2);
+    ctx.fillStyle = PAL.mushStemShade;
+    roundRect(-w/2+4, h/2-10, w-8, 10, 3); ctx.fill();
+    ctx.fillStyle = PAL.mushStem;
+    roundRect(-w/2+5, h/2-10, w-10, 8, 3); ctx.fill();
+    ctx.fillStyle = PAL.mushCapDark;
+    ctx.beginPath(); ctx.arc(0, -h*0.05, w/2, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = PAL.mushCap;
+    ctx.beginPath(); ctx.ellipse(0, -h*0.08, w/2-2, h/2-3, 0, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = PAL.mushSpot;
+    ctx.beginPath(); ctx.ellipse(-w*0.22,-h*0.28,3.4,3,0,0,7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(w*0.22,-h*0.28,3.4,3,0,0,7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0,-h*0.42,3,2.6,0,0,7); ctx.fill();
     ctx.restore();
 }
 
@@ -771,17 +942,18 @@ function draw() {
             ctx.fillStyle = body; ctx.fillRect(dx, p.y+8, p.w, Math.max(0,p.h-8));
             ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = 1;
             for (let i=0; i<p.w; i+=24) { ctx.strokeRect(dx+i, p.y+8, 24, 16); ctx.strokeRect(dx+i-12, p.y+24, 24, 16); }
-            if (uType==='g' && !p.type.startsWith('stair')) {
+            if (uType==='g') {
                 ctx.fillStyle = '#4ec22e';
                 for (let i=0; i<p.w; i+=6) ctx.fillRect(dx+i, p.y-2, 2, 4);
-            } else if (p.type.startsWith('stair')) {
-                ctx.fillStyle = uType==='g' ? '#4ec22e' : (uType==='c' ? '#a86a4a' : '#5a5a9a');
+            } else if (uType==='c') {
+                ctx.fillStyle = '#a86a4a';
                 for (let i=0; i<p.w; i+=6) ctx.fillRect(dx+i, p.y-2, 2, 4);
             }
         } else if (p.type === 'brick' || p.type === 'brick_u' || p.type === 'brick_c') {
             const c1 = p.type === 'brick' ? PAL.brick : (p.type === 'brick_u' ? '#4a4a8a' : '#8a4a3a');
             const c2 = p.type === 'brick' ? PAL.brickDark : (p.type === 'brick_u' ? '#2a2a5a' : '#5a2a1a');
             ctx.fillStyle = c1; ctx.fillRect(dx, by, p.w, p.h);
+            ctx.fillStyle = PAL.brickLight; ctx.fillRect(dx+2, by+2, p.w-4, 3);
             ctx.strokeStyle = c2; ctx.lineWidth = 2; ctx.strokeRect(dx+1, by+1, p.w-2, p.h-2);
             ctx.strokeStyle = c2; ctx.beginPath();
             ctx.moveTo(dx+p.w/2, by); ctx.lineTo(dx+p.w/2, by+p.h/2);
@@ -790,16 +962,17 @@ function draw() {
             ctx.moveTo(dx+3*p.w/4, by+p.h/2); ctx.lineTo(dx+3*p.w/4, by+p.h);
             ctx.stroke();
         } else if (p.type === 'question') {
-            const isCoin = p.coin && !p.used;
-            ctx.fillStyle = isCoin ? PAL.block : '#8a8a8a';
+            const isActive = p.item && !p.used;
+            ctx.fillStyle = isActive ? PAL.block : '#8a8a8a';
             ctx.fillRect(dx, by, p.w, p.h);
+            ctx.fillStyle = isActive ? PAL.blockLight : '#a8a8a8';
+            ctx.fillRect(dx+2, by+2, p.w-4, 3);
             ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2;
             ctx.strokeRect(dx+1, by+1, p.w-2, p.h-2);
-            // rivet klasik di sudut
-            ctx.fillStyle = isCoin ? PAL.blockDark : '#5a5a5a';
+            ctx.fillStyle = isActive ? PAL.blockDark : '#5a5a5a';
             ctx.fillRect(dx+3, by+3, 3, 3); ctx.fillRect(dx+p.w-6, by+3, 3, 3);
             ctx.fillRect(dx+3, by+p.h-6, 3, 3); ctx.fillRect(dx+p.w-6, by+p.h-6, 3, 3);
-            if (isCoin) {
+            if (isActive) {
                 const pulse = Math.sin(frameCount * 0.08) * 2;
                 ctx.fillStyle = '#fff';
                 ctx.font = 'bold 20px monospace'; ctx.textAlign = 'center';
@@ -834,6 +1007,12 @@ function draw() {
         ctx.beginPath(); ctx.ellipse(dx, c.y, 4*scale+1, 4, 0, 0, Math.PI*2); ctx.fill();
     }
 
+    for (const it of items) {
+        const dx = drawX(it.x);
+        if (dx < -40 || dx > W+40) continue;
+        if (it.type === 'mushroom') drawMushroom(dx, it.y, it.w, it.h);
+    }
+
     for (const e of enemies) {
         if (!e.alive) continue;
         const dx = drawX(e.x);
@@ -841,10 +1020,8 @@ function draw() {
         drawGoomba(dx, e.y, 28, 26, e.walkPhase, e.squish);
     }
 
-    // castle di akhir setiap stage
     drawCastle(drawX(flag.x + 90));
 
-    // bendera
     const fdx = drawX(flag.x);
     if (fdx > -40 && fdx < W+40) {
         const poleTop = flag.y - 10;
@@ -869,9 +1046,9 @@ function draw() {
     if (!player.dead && player.invincible % 4 < 2) {
         const dx = drawX(player.x);
         const jumping = !player.onGround && !player.flagSliding && !player.walkingToCastle;
-        let facing = player.facing, frame = player.frame;
-        if (player.flagSliding) { facing = -1; frame = 0; }
-        drawMario(dx, player.y, player.w, player.h, facing, frame, player.onGround || player.walkingToCastle, jumping);
+        let facing = player.facing;
+        if (player.flagSliding) facing = -1;
+        drawMario(dx, player.y, player.w, player.h, facing, player.walkPhase, player.onGround || player.walkingToCastle, jumping, player.skid, player.size==='big', player.growAnim);
     }
 
     for (const p of particles) {
