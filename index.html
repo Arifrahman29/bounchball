@@ -624,22 +624,33 @@ function update() {
     if (keys['arrowleft']) moveX = -1;
     if (keys['arrowright']) moveX = 1;
 
-    const easeRate = (running ? RUN_ACCEL_EASE : ACCEL_EASE) * (player.onGround ? 1 : 0.65);
+    const easeRate = running ? RUN_ACCEL_EASE : ACCEL_EASE;
     const maxSpeed = running ? MAX_RUN_SPEED : MAX_WALK_SPEED;
+    const SKID_RATE = 0.3; // laju pengereman saat membalik arah cepat (khas Mario klasik)
 
-    player.skid = player.onGround && moveX !== 0 && player.vx !== 0 &&
-                  Math.sign(moveX) !== Math.sign(player.vx) && Math.abs(player.vx) > 1.2;
+    // tentukan skid SEBELUM vx diubah frame ini
+    const wasSkidding = player.onGround && moveX !== 0 && player.vx !== 0 &&
+                  Math.sign(moveX) !== Math.sign(player.vx) && Math.abs(player.vx) > 0.3;
+    player.skid = wasSkidding;
 
     if (moveX !== 0) {
-        // easing eksponensial menuju kecepatan target -> kurva percepatan halus,
-        // tidak "nyentak" seperti penambahan linear + clamp mendadak
-        const target = moveX * maxSpeed;
-        player.vx += (target - player.vx) * easeRate;
+        if (wasSkidding) {
+            // tergelincir dulu (laju tetap, bukan easing) sebelum berakselerasi ke arah baru —
+            // ini yang bikin "belokan mendadak" Mario asli terasa berbeda dari game generik
+            player.vx -= Math.sign(player.vx) * SKID_RATE;
+            if (Math.abs(player.vx) < SKID_RATE) player.vx = 0;
+        } else {
+            const rate = player.onGround ? easeRate : easeRate * 0.55;
+            const target = moveX * maxSpeed;
+            player.vx += (target - player.vx) * rate;
+        }
         player.facing = moveX;
-    } else {
-        player.vx *= player.onGround ? FRICTION_GROUND : FRICTION_AIR;
+    } else if (player.onGround) {
+        player.vx *= FRICTION_GROUND;
         if (Math.abs(player.vx) < 0.06) player.vx = 0;
     }
+    // catatan: kalau di udara & tidak ada input, vx TIDAK direm sama sekali —
+    // momentum lompatan asli Mario terbawa penuh sampai mendarat
 
     if (player.onGround && Math.abs(player.vx) > 0.2) {
         player.walkPhase += Math.min(Math.abs(player.vx) * 0.1 + 0.07, 0.75);
