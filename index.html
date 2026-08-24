@@ -16,6 +16,7 @@ canvas{display:block;width:100%;image-rendering:pixelated;background:#5c94fc;bor
 #status{color:#4fc3f7;font-size:14px;font-weight:bold;display:flex;gap:20px;align-items:center}
 #status .label{color:#888;font-weight:normal}
 #status .value{color:#ffd700}
+#hint{color:#555;font-size:11px;text-align:center;margin-top:6px}
 </style>
 </head>
 <body>
@@ -34,16 +35,18 @@ canvas{display:block;width:100%;image-rendering:pixelated;background:#5c94fc;bor
 <span><span class="label">🌟</span> <span class="value" id="stageDisplay">1-1</span></span>
 </div>
 </div>
+<div id="hint">Lompati jurang, jangan sentuh Goomba dari samping — injak dari atas!</div>
 </div>
 <script>
 // ============================================================
-//  SUPER MARIO BROS - CLASSIC EDITION (Full Game)
-//  Mirip dengan versi NES/SNES dengan multiple stage
+//  SUPER MARIO BROS - CLASSIC EDITION
 // ============================================================
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const W = 960, H = 480;
+const GROUND_Y = 420;
+const T = 32; // ukuran tile
 
 // ---------- Keyboard ----------
 const keys = {};
@@ -51,304 +54,268 @@ document.addEventListener('keydown', e => {
     keys[e.key.toLowerCase()] = true;
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault();
 });
-document.addEventListener('keyup', e => {
-    keys[e.key.toLowerCase()] = false;
-});
+document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 
-// ---------- Konstanta Fisika ----------
+// ---------- Fisika ----------
 const GRAVITY = 0.55;
 const FRICTION = 0.80;
 const MAX_WALK_SPEED = 4.8;
 const JUMP_FORCE = -10.8;
 const MAX_FALL_SPEED = 12;
 
-// ---------- Helper ----------
 function rectCollide(a, b) {
     return a.x < b.x + b.w && a.x + a.w > b.x &&
            a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
-// ---------- Definisi Stage ----------
-// Setiap stage: platforms, enemies, coins, flag, name, background
-// Platform type: 'ground', 'brick', 'question', 'platform', 'pipe'
-// Question block memiliki properti 'coin' (boolean) dan 'used'
+// ---------- Palet warna gaya NES ----------
+const PAL = {
+    marioRed: '#D82800', marioRedDark: '#A81C00',
+    marioBlue: '#0058F8', marioBlueDark: '#0038B8',
+    skin: '#F8D8A8', hair: '#402000',
+    white: '#FCFCFC', buttonYellow: '#F8B800',
+    brick: '#C84C0C', brickDark: '#943C00',
+    block: '#FCA044', blockDark: '#B87818',
+    pipeLight: '#00D800', pipeBody: '#00A800', pipeDark: '#005800',
+    goomba: '#C84C0C', goombaDark: '#7C2C00', goombaFoot: '#501800',
+    groundTop: '#6AAA4A', groundBody: '#8A7A5A',
+    castleGray: '#8a8a8a', castleDark:'#5a5a5a'
+};
 
-const STAGES = [];
+// ---------- Helper: bikin segmen tanah dengan jurang ----------
+function groundWithGaps(totalWidth, gaps, type='ground') {
+    const segs = [];
+    let cursor = 0;
+    const sorted = [...gaps].sort((a,b)=>a[0]-b[0]);
+    for (const [gs, ge] of sorted) {
+        if (gs > cursor) segs.push({x:cursor, y:GROUND_Y, w:gs-cursor, h:60, type});
+        cursor = ge;
+    }
+    if (cursor < totalWidth) segs.push({x:cursor, y:GROUND_Y, w:totalWidth-cursor, h:60, type});
+    return segs;
+}
 
-// ---- Stage 1-1 (Pembelajaran) ----
-STAGES.push({
-    name: '1-1',
-    bgColor1: '#5c94fc',
-    bgColor2: '#aaccff',
+function staircase(startX, steps, dir, groundType, stepW=32) {
+    // dir=1 menaik ke kanan, dir=-1 menurun ke kanan
+    const out = [];
+    for (let i = 0; i < steps; i++) {
+        const h = dir === 1 ? (i+1)*stepW : (steps-i)*stepW;
+        out.push({x: startX + i*stepW, y: GROUND_Y - h, w: stepW, h: h, type: 'stair_'+groundType});
+    }
+    return out;
+}
+
+// ============================================================
+//  STAGE 1-1 — layout mengikuti struktur level ikonik aslinya:
+//  goomba pembuka -> blok bata/koin -> pipa naik tinggi -> jurang
+//  pertama -> area goomba & koin -> jurang kedua -> tangga naik
+//  turun -> bendera -> kastil
+// ============================================================
+const LV11_WIDTH = 2680;
+const LV11_GAPS = [[720,808],[1660,1780]];
+
+const stage11 = {
+    name: '1-1', theme:'overworld', bgColor1:'#5C94FC', bgColor2:'#8fb8ff',
+    levelWidth: LV11_WIDTH,
     platforms: [
-        // Ground (panjang)
-        {x:0, y:420, w:960, h:60, type:'ground'},
-        // Blok awal
-        {x:80, y:360, w:32, h:32, type:'brick'},
-        {x:112, y:360, w:32, h:32, type:'question', coin:true},
-        {x:144, y:360, w:32, h:32, type:'brick'},
-        {x:176, y:360, w:32, h:32, type:'question', coin:true},
-        {x:208, y:360, w:32, h:32, type:'brick'},
-        // Platform terapung
-        {x:280, y:320, w:96, h:20, type:'platform'},
-        // Blok tengah
-        {x:400, y:360, w:32, h:32, type:'brick'},
-        {x:432, y:360, w:32, h:32, type:'question', coin:true},
-        {x:464, y:360, w:32, h:32, type:'brick'},
-        // Platform tinggi
-        {x:540, y:280, w:80, h:20, type:'platform'},
-        // Blok dekat pipa
-        {x:660, y:340, w:32, h:32, type:'question', coin:true},
-        {x:692, y:340, w:32, h:32, type:'brick'},
-        {x:724, y:340, w:32, h:32, type:'question', coin:true},
-        // Platform akhir
-        {x:800, y:380, w:120, h:20, type:'platform'},
-        // Pipa
-        {x:150, y:390, w:40, h:30, type:'pipe'},
-        {x:480, y:390, w:40, h:30, type:'pipe'},
-        {x:860, y:390, w:40, h:30, type:'pipe'},
+        ...groundWithGaps(LV11_WIDTH, LV11_GAPS),
+        // blok tunggal awal (isolated block, khas 1-1)
+        {x:176, y:296, w:32, h:32, type:'question', coin:true},
+        // deretan 4 blok klasik
+        {x:352, y:296, w:32, h:32, type:'brick'},
+        {x:384, y:296, w:32, h:32, type:'question', coin:true},
+        {x:416, y:296, w:32, h:32, type:'brick'},
+        {x:448, y:296, w:32, h:32, type:'question', coin:true},
+        // pipa bertingkat (pendek -> sedang -> tinggi)
+        {x:560, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
+        {x:660, y:GROUND_Y-96, w:56, h:96, type:'pipe'},
+        // setelah jurang pertama: blok + platform layang
+        {x:900, y:296, w:32, h:32, type:'question', coin:true},
+        {x:932, y:296, w:32, h:32, type:'brick'},
+        {x:964, y:296, w:32, h:32, type:'question', coin:true},
+        {x:1080, y:260, w:96, h:20, type:'platform'},
+        {x:1260, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
+        {x:1420, y:296, w:32, h:32, type:'question', coin:true},
+        {x:1452, y:296, w:32, h:32, type:'brick'},
+        // setelah jurang kedua: tangga naik lalu turun menuju bendera
+        ...staircase(1860, 4, 1, 'gnd'),
+        ...staircase(1988, 4, -1, 'gnd'),
+        {x:2116, y:GROUND_Y, w:420, h:60, type:'ground'},
     ],
     enemies: [
-        {x:120, y:392, type:'goomba'},
-        {x:300, y:392, type:'goomba'},
-        {x:420, y:392, type:'goomba'},
-        {x:560, y:252, type:'goomba'},
-        {x:680, y:392, type:'goomba'},
-        {x:820, y:392, type:'goomba'},
-    ],
-    coins: [
-        {x:100, y:392}, {x:140, y:392},
-        {x:300, y:392}, {x:340, y:392},
-        {x:560, y:392}, {x:600, y:392},
-        {x:680, y:392}, {x:720, y:392},
-        {x:820, y:392}, {x:860, y:392},
-    ],
-    flag: {x:920, y:340, height:80}
-});
-
-// ---- Stage 1-2 (Lebih sulit) ----
-STAGES.push({
-    name: '1-2',
-    bgColor1: '#5c94fc',
-    bgColor2: '#aaccff',
-    platforms: [
-        {x:0, y:420, w:960, h:60, type:'ground'},
-        {x:60, y:340, w:32, h:32, type:'question', coin:true},
-        {x:92, y:340, w:32, h:32, type:'brick'},
-        {x:124, y:340, w:32, h:32, type:'question', coin:true},
-        {x:200, y:280, w:80, h:20, type:'platform'},
-        {x:320, y:340, w:32, h:32, type:'brick'},
-        {x:352, y:340, w:32, h:32, type:'question', coin:true},
-        {x:384, y:340, w:32, h:32, type:'brick'},
-        {x:416, y:340, w:32, h:32, type:'brick'},
-        {x:480, y:260, w:64, h:20, type:'platform'},
-        {x:580, y:320, w:32, h:32, type:'question', coin:true},
-        {x:612, y:320, w:32, h:32, type:'brick'},
-        {x:680, y:380, w:100, h:20, type:'platform'},
-        {x:700, y:280, w:32, h:32, type:'question', coin:true},
-        {x:732, y:280, w:32, h:32, type:'brick'},
-        {x:820, y:340, w:120, h:20, type:'platform'},
-        {x:50, y:390, w:40, h:30, type:'pipe'},
-        {x:280, y:390, w:40, h:30, type:'pipe'},
-        {x:440, y:390, w:40, h:30, type:'pipe'},
-        {x:800, y:390, w:40, h:30, type:'pipe'},
-    ],
-    enemies: [
-        {x:100, y:392, type:'goomba'},
-        {x:230, y:392, type:'goomba'},
-        {x:290, y:392, type:'goomba'},
-        {x:400, y:392, type:'goomba'},
-        {x:490, y:232, type:'goomba'},
-        {x:550, y:392, type:'goomba'},
-        {x:640, y:392, type:'goomba'},
-        {x:760, y:392, type:'goomba'},
-        {x:830, y:392, type:'goomba'},
-    ],
-    coins: [
-        {x:80, y:392}, {x:220, y:392}, {x:260, y:392},
-        {x:340, y:392}, {x:500, y:392}, {x:540, y:392},
-        {x:640, y:392}, {x:720, y:392}, {x:840, y:392}, {x:880, y:392},
-    ],
-    flag: {x:920, y:340, height:80}
-});
-
-// ---- Stage 1-3 (Boss stage) ----
-STAGES.push({
-    name: '1-3',
-    bgColor1: '#5c94fc',
-    bgColor2: '#aaccff',
-    platforms: [
-        {x:0, y:420, w:960, h:60, type:'ground'},
-        {x:50, y:320, w:32, h:32, type:'question', coin:true},
-        {x:82, y:320, w:32, h:32, type:'brick'},
-        {x:114, y:320, w:32, h:32, type:'question', coin:true},
-        {x:180, y:380, w:80, h:20, type:'platform'},
-        {x:300, y:300, w:32, h:32, type:'brick'},
-        {x:332, y:300, w:32, h:32, type:'question', coin:true},
-        {x:364, y:300, w:32, h:32, type:'brick'},
-        {x:440, y:350, w:64, h:20, type:'platform'},
-        {x:540, y:270, w:32, h:32, type:'question', coin:true},
-        {x:572, y:270, w:32, h:32, type:'brick'},
-        {x:640, y:380, w:80, h:20, type:'platform'},
-        {x:760, y:300, w:32, h:32, type:'question', coin:true},
-        {x:792, y:300, w:32, h:32, type:'brick'},
-        {x:824, y:300, w:32, h:32, type:'question', coin:true},
-        {x:100, y:390, w:40, h:30, type:'pipe'},
-        {x:400, y:390, w:40, h:30, type:'pipe'},
-        {x:700, y:390, w:40, h:30, type:'pipe'},
-    ],
-    enemies: [
-        {x:100, y:392, type:'goomba'},
-        {x:200, y:392, type:'goomba'},
-        {x:250, y:392, type:'goomba'},
-        {x:350, y:392, type:'goomba'},
-        {x:450, y:392, type:'goomba'},
-        {x:500, y:392, type:'goomba'},
+        {x:220, y:392, type:'goomba'},
         {x:600, y:392, type:'goomba'},
-        {x:650, y:392, type:'goomba'},
-        {x:750, y:392, type:'goomba'},
-        {x:850, y:392, type:'goomba'},
+        {x:860, y:392, type:'goomba'},
+        {x:1000, y:392, type:'goomba'},
+        {x:1520, y:392, type:'goomba'},
+        {x:1600, y:392, type:'goomba'},
+        {x:1900, y:392, type:'goomba'},
+        {x:2040, y:392, type:'goomba'},
     ],
     coins: [
-        {x:70, y:392}, {x:130, y:392}, {x:200, y:392},
-        {x:320, y:392}, {x:460, y:392}, {x:500, y:392},
-        {x:660, y:392}, {x:780, y:392}, {x:840, y:392}, {x:890, y:392},
+        {x:200, y:392},{x:640, y:392},{x:840, y:392},
+        {x:1120, y:230},{x:1500, y:392},{x:1580, y:392},
+        {x:1840, y:392},{x:2200, y:392},{x:2260, y:392},
     ],
-    flag: {x:920, y:340, height:80}
-});
+    flag: {x:2440, y:340, height:80}
+};
 
-// ---- Stage 2-1 (Underground) ----
-STAGES.push({
-    name: '2-1',
-    bgColor1: '#1a2a3a',
-    bgColor2: '#2a3a4a',
+// ---------- Stage 1-2 : Overworld lanjutan, ada jurang & pipa piramida ----------
+const LV12_WIDTH = 1900;
+const stage12 = {
+    name: '1-2', theme:'overworld', bgColor1:'#5C94FC', bgColor2:'#8fb8ff',
+    levelWidth: LV12_WIDTH,
     platforms: [
-        {x:0, y:420, w:960, h:60, type:'ground'},
-        {x:80, y:360, w:32, h:32, type:'brick'},
-        {x:112, y:360, w:32, h:32, type:'question', coin:true},
-        {x:144, y:360, w:32, h:32, type:'brick'},
-        {x:176, y:360, w:32, h:32, type:'question', coin:true},
-        {x:280, y:320, w:96, h:20, type:'platform'},
-        {x:400, y:360, w:32, h:32, type:'brick'},
-        {x:432, y:360, w:32, h:32, type:'question', coin:true},
-        {x:464, y:360, w:32, h:32, type:'brick'},
-        {x:540, y:280, w:80, h:20, type:'platform'},
-        {x:660, y:340, w:32, h:32, type:'question', coin:true},
-        {x:692, y:340, w:32, h:32, type:'brick'},
-        {x:724, y:340, w:32, h:32, type:'question', coin:true},
-        {x:800, y:380, w:120, h:20, type:'platform'},
-        {x:150, y:390, w:40, h:30, type:'pipe'},
-        {x:480, y:390, w:40, h:30, type:'pipe'},
-        {x:860, y:390, w:40, h:30, type:'pipe'},
+        ...groundWithGaps(LV12_WIDTH, [[560,648],[1180,1276]]),
+        {x:120, y:296, w:32, h:32, type:'question', coin:true},
+        {x:152, y:296, w:32, h:32, type:'brick'},
+        {x:184, y:296, w:32, h:32, type:'question', coin:true},
+        {x:280, y:236, w:80, h:20, type:'platform'},
+        {x:420, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
+        {x:490, y:GROUND_Y-96, w:56, h:96, type:'pipe'},
+        {x:720, y:296, w:32, h:32, type:'brick'},
+        {x:752, y:296, w:32, h:32, type:'question', coin:true},
+        {x:784, y:296, w:32, h:32, type:'brick'},
+        {x:880, y:230, w:64, h:20, type:'platform'},
+        {x:1000, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
+        {x:1340, y:296, w:32, h:32, type:'question', coin:true},
+        {x:1372, y:296, w:32, h:32, type:'brick'},
+        ...staircase(1500, 3, 1, 'gnd'),
+        ...staircase(1596, 3, -1, 'gnd'),
+        {x:1692, y:GROUND_Y, w:208, h:60, type:'ground'},
     ],
     enemies: [
-        {x:120, y:392, type:'goomba'},
-        {x:300, y:392, type:'goomba'},
-        {x:420, y:392, type:'goomba'},
-        {x:560, y:252, type:'goomba'},
-        {x:680, y:392, type:'goomba'},
-        {x:820, y:392, type:'goomba'},
+        {x:230, y:392, type:'goomba'},{x:340, y:392, type:'goomba'},
+        {x:700, y:392, type:'goomba'},{x:820, y:392, type:'goomba'},
+        {x:1080, y:392, type:'goomba'},{x:1200, y:392, type:'goomba'},
+        {x:1420, y:392, type:'goomba'},
     ],
     coins: [
-        {x:100, y:392}, {x:140, y:392},
-        {x:300, y:392}, {x:340, y:392},
-        {x:560, y:392}, {x:600, y:392},
-        {x:680, y:392}, {x:720, y:392},
-        {x:820, y:392}, {x:860, y:392},
+        {x:300, y:392},{x:340, y:210},{x:900, y:392},
+        {x:920, y:200},{x:1420, y:392},{x:1750, y:392},
     ],
-    flag: {x:920, y:340, height:80}
-});
+    flag: {x:1830, y:340, height:80}
+};
 
-// ---- Stage 2-2 (Castle) ----
-STAGES.push({
-    name: '2-2',
-    bgColor1: '#2a1a2a',
-    bgColor2: '#3a2a3a',
+// ---------- Stage 1-3 : Sky/platform stage dengan tangga akhir ----------
+const stage13 = {
+    name: '1-3', theme:'overworld', bgColor1:'#5C94FC', bgColor2:'#8fb8ff',
+    levelWidth: 1550,
     platforms: [
-        {x:0, y:420, w:960, h:60, type:'ground'},
-        {x:60, y:340, w:32, h:32, type:'question', coin:true},
-        {x:92, y:340, w:32, h:32, type:'brick'},
-        {x:124, y:340, w:32, h:32, type:'question', coin:true},
-        {x:200, y:280, w:80, h:20, type:'platform'},
-        {x:320, y:340, w:32, h:32, type:'brick'},
-        {x:352, y:340, w:32, h:32, type:'question', coin:true},
-        {x:384, y:340, w:32, h:32, type:'brick'},
-        {x:416, y:340, w:32, h:32, type:'brick'},
-        {x:480, y:260, w:64, h:20, type:'platform'},
-        {x:580, y:320, w:32, h:32, type:'question', coin:true},
-        {x:612, y:320, w:32, h:32, type:'brick'},
-        {x:680, y:380, w:100, h:20, type:'platform'},
-        {x:700, y:280, w:32, h:32, type:'question', coin:true},
-        {x:732, y:280, w:32, h:32, type:'brick'},
-        {x:820, y:340, w:120, h:20, type:'platform'},
-        {x:50, y:390, w:40, h:30, type:'pipe'},
-        {x:280, y:390, w:40, h:30, type:'pipe'},
-        {x:440, y:390, w:40, h:30, type:'pipe'},
-        {x:800, y:390, w:40, h:30, type:'pipe'},
+        ...groundWithGaps(1550, [[420,520],[900,1000]]),
+        {x:100, y:296, w:32, h:32, type:'question', coin:true},
+        {x:200, y:340, w:80, h:20, type:'platform'},
+        {x:340, y:260, w:64, h:20, type:'platform'},
+        {x:600, y:296, w:32, h:32, type:'brick'},
+        {x:632, y:296, w:32, h:32, type:'question', coin:true},
+        {x:664, y:296, w:32, h:32, type:'brick'},
+        {x:740, y:240, w:80, h:20, type:'platform'},
+        {x:1060, y:296, w:32, h:32, type:'question', coin:true},
+        {x:1092, y:296, w:32, h:32, type:'brick'},
+        {x:1160, y:340, w:96, h:20, type:'platform'},
+        ...staircase(1300, 4, 1, 'gnd'),
     ],
     enemies: [
-        {x:100, y:392, type:'goomba'},
-        {x:230, y:392, type:'goomba'},
-        {x:290, y:392, type:'goomba'},
-        {x:400, y:392, type:'goomba'},
-        {x:490, y:232, type:'goomba'},
-        {x:550, y:392, type:'goomba'},
-        {x:640, y:392, type:'goomba'},
-        {x:760, y:392, type:'goomba'},
-        {x:830, y:392, type:'goomba'},
+        {x:120, y:392, type:'goomba'},{x:640, y:392, type:'goomba'},
+        {x:760, y:392, type:'goomba'},{x:1030, y:392, type:'goomba'},
+        {x:1150, y:392, type:'goomba'},
     ],
     coins: [
-        {x:80, y:392}, {x:220, y:392}, {x:260, y:392},
-        {x:340, y:392}, {x:500, y:392}, {x:540, y:392},
-        {x:640, y:392}, {x:720, y:392}, {x:840, y:392}, {x:880, y:392},
+        {x:230, y:310},{x:370, y:230},{x:770, y:210},{x:1190, y:310},
     ],
-    flag: {x:920, y:340, height:80}
-});
+    flag: {x:1480, y:250, height:170}
+};
 
-// ---- Stage 3-1 (Final) ----
-STAGES.push({
-    name: '3-1',
-    bgColor1: '#4a2a1a',
-    bgColor2: '#5a3a2a',
+// ---------- Stage 2-1 : Underground ----------
+const stage21 = {
+    name: '2-1', theme:'underground', bgColor1:'#0a0a1a', bgColor2:'#1a1a3a',
+    levelWidth: 1700,
     platforms: [
-        {x:0, y:420, w:960, h:60, type:'ground'},
-        {x:50, y:320, w:32, h:32, type:'question', coin:true},
-        {x:82, y:320, w:32, h:32, type:'brick'},
-        {x:114, y:320, w:32, h:32, type:'question', coin:true},
-        {x:180, y:380, w:80, h:20, type:'platform'},
-        {x:300, y:300, w:32, h:32, type:'brick'},
-        {x:332, y:300, w:32, h:32, type:'question', coin:true},
-        {x:364, y:300, w:32, h:32, type:'brick'},
-        {x:440, y:350, w:64, h:20, type:'platform'},
-        {x:540, y:270, w:32, h:32, type:'question', coin:true},
-        {x:572, y:270, w:32, h:32, type:'brick'},
-        {x:640, y:380, w:80, h:20, type:'platform'},
-        {x:760, y:300, w:32, h:32, type:'question', coin:true},
-        {x:792, y:300, w:32, h:32, type:'brick'},
-        {x:824, y:300, w:32, h:32, type:'question', coin:true},
-        {x:100, y:390, w:40, h:30, type:'pipe'},
-        {x:400, y:390, w:40, h:30, type:'pipe'},
-        {x:700, y:390, w:40, h:30, type:'pipe'},
+        ...groundWithGaps(1700, [[640,720]], 'ground_u'),
+        {x:80, y:296, w:32, h:32, type:'brick_u'},
+        {x:112, y:296, w:32, h:32, type:'question', coin:true},
+        {x:144, y:296, w:32, h:32, type:'brick_u'},
+        {x:280, y:340, w:96, h:20, type:'platform_u'},
+        {x:440, y:296, w:32, h:32, type:'question', coin:true},
+        {x:472, y:296, w:32, h:32, type:'brick_u'},
+        {x:800, y:260, w:80, h:20, type:'platform_u'},
+        {x:960, y:296, w:32, h:32, type:'question', coin:true},
+        {x:992, y:296, w:32, h:32, type:'brick_u'},
+        {x:1024, y:296, w:32, h:32, type:'question', coin:true},
+        {x:1200, y:340, w:120, h:20, type:'platform_u'},
+        {x:1400, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
     ],
     enemies: [
-        {x:100, y:392, type:'goomba'},
-        {x:200, y:392, type:'goomba'},
-        {x:250, y:392, type:'goomba'},
-        {x:350, y:392, type:'goomba'},
-        {x:450, y:392, type:'goomba'},
-        {x:500, y:392, type:'goomba'},
-        {x:600, y:392, type:'goomba'},
-        {x:650, y:392, type:'goomba'},
-        {x:750, y:392, type:'goomba'},
-        {x:850, y:392, type:'goomba'},
+        {x:160, y:392, type:'goomba'},{x:500, y:392, type:'goomba'},
+        {x:820, y:232, type:'goomba'},{x:1060, y:392, type:'goomba'},
+        {x:1250, y:392, type:'goomba'},
     ],
     coins: [
-        {x:70, y:392}, {x:130, y:392}, {x:200, y:392},
-        {x:320, y:392}, {x:460, y:392}, {x:500, y:392},
-        {x:660, y:392}, {x:780, y:392}, {x:840, y:392}, {x:890, y:392},
+        {x:180, y:392},{x:520, y:392},{x:1080, y:392},{x:1580, y:392},
     ],
-    flag: {x:920, y:340, height:80}
-});
+    flag: {x:1620, y:340, height:80}
+};
+
+// ---------- Stage 2-2 : Castle ----------
+const stage22 = {
+    name: '2-2', theme:'castle', bgColor1:'#1a0a0a', bgColor2:'#3a1414',
+    levelWidth: 1750,
+    platforms: [
+        ...groundWithGaps(1750, [[500,580],[1100,1190]], 'ground_c'),
+        {x:100, y:296, w:32, h:32, type:'question', coin:true},
+        {x:132, y:296, w:32, h:32, type:'brick_c'},
+        {x:250, y:250, w:80, h:20, type:'platform_c'},
+        {x:660, y:296, w:32, h:32, type:'brick_c'},
+        {x:692, y:296, w:32, h:32, type:'question', coin:true},
+        {x:724, y:296, w:32, h:32, type:'brick_c'},
+        {x:850, y:230, w:64, h:20, type:'platform_c'},
+        ...staircase(1250, 5, 1, 'castle'),
+        ...staircase(1410, 5, -1, 'castle'),
+        {x:1570, y:GROUND_Y, w:180, h:60, type:'ground_c'},
+    ],
+    enemies: [
+        {x:180, y:392, type:'goomba'},{x:700, y:392, type:'goomba'},
+        {x:780, y:392, type:'goomba'},{x:1300, y:392, type:'goomba'},
+    ],
+    coins: [
+        {x:280, y:210},{x:900, y:190},{x:1660, y:392},
+    ],
+    flag: {x:1690, y:340, height:80}
+};
+
+// ---------- Stage 3-1 : Sunset finale ----------
+const stage31 = {
+    name: '3-1', theme:'sunset', bgColor1:'#e0703a', bgColor2:'#ffb85a',
+    levelWidth: 2000,
+    platforms: [
+        ...groundWithGaps(2000, [[440,540],[1000,1120]]),
+        {x:100, y:296, w:32, h:32, type:'question', coin:true},
+        {x:132, y:296, w:32, h:32, type:'brick'},
+        {x:220, y:340, w:80, h:20, type:'platform'},
+        {x:600, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
+        {x:680, y:GROUND_Y-96, w:56, h:96, type:'pipe'},
+        {x:760, y:GROUND_Y-128, w:56, h:128, type:'pipe'},
+        {x:1200, y:296, w:32, h:32, type:'question', coin:true},
+        {x:1232, y:296, w:32, h:32, type:'brick'},
+        {x:1264, y:296, w:32, h:32, type:'question', coin:true},
+        {x:1400, y:250, w:96, h:20, type:'platform'},
+        ...staircase(1600, 5, 1, 'gnd'),
+        ...staircase(1760, 5, -1, 'gnd'),
+        {x:1920, y:GROUND_Y, w:80, h:60, type:'ground'},
+    ],
+    enemies: [
+        {x:160, y:392, type:'goomba'},{x:300, y:392, type:'goomba'},
+        {x:580, y:392, type:'goomba'},{x:900, y:392, type:'goomba'},
+        {x:980, y:392, type:'goomba'},{x:1300, y:392, type:'goomba'},
+        {x:1550, y:392, type:'goomba'},
+    ],
+    coins: [
+        {x:260, y:310},{x:1450, y:210},{x:1870, y:392},
+    ],
+    flag: {x:1900, y:250, height:170}
+};
+
+const STAGES = [stage11, stage12, stage13, stage21, stage22, stage31];
 
 // ============================================================
 //  GAME STATE
@@ -365,46 +332,38 @@ let winScreen = false;
 let frameCount = 0;
 let deathTimer = 0;
 let stageTransition = 0;
-let particles = []; // Untuk efek koin/block
+let particles = [];
+let hills = [], bushes = [];
+
+function buildScenery(levelWidth) {
+    hills = []; bushes = [];
+    const n = Math.ceil(levelWidth / 380) + 2;
+    for (let i = 0; i < n; i++) hills.push({x: i * 380 + 60, r: 70 + (i % 2) * 25});
+    const m = Math.ceil(levelWidth / 220) + 2;
+    for (let i = 0; i < m; i++) bushes.push({x: i * 220 + 40, scale: 0.8 + (i % 3) * 0.3});
+}
 
 function loadStage(index) {
     const stage = STAGES[index];
-    platforms = stage.platforms.map(p => ({...p, used: false}));
+    platforms = stage.platforms.map(p => ({...p, used: false, bump: 0}));
     enemies = stage.enemies.map(e => ({
-        ...e,
-        alive: true,
+        ...e, alive: true, squish: 0,
         vx: (Math.random() > 0.5 ? 1 : -1) * (0.8 + Math.random() * 0.8),
-        vy: 0,
-        onGround: false,
-        startX: e.x
+        vy: 0, onGround: false, startX: e.x, walkPhase: Math.random()*10
     }));
     coins = stage.coins.map(c => ({...c, collected: false}));
     flag = {...stage.flag};
-    
+    buildScenery(stage.levelWidth);
+
     player = {
-        x: 40,
-        y: 390,
-        w: 28,
-        h: 34,
-        vx: 0,
-        vy: 0,
-        onGround: false,
-        facing: 1,
-        frame: 0,
-        frameTimer: 0,
-        invincible: 0,
-        dead: false,
-        big: false,  // Untuk power-up (tidak digunakan di sini)
-        score: player.score || 0,
-        coins: player.coins || 0,
-        lives: player.lives || 3
+        x: 40, y: 390, w: 26, h: 32, vx: 0, vy: 0, onGround: false,
+        facing: 1, frame: 0, frameTimer: 0, invincible: 0, dead: false,
+        flagSliding: false, walkingToCastle: false,
+        score: player.score || 0, coins: player.coins || 0, lives: player.lives || 3
     };
-    
+
     camera.x = 0;
-    gameOver = false;
-    winScreen = false;
-    deathTimer = 0;
-    stageTransition = 0;
+    gameOver = false; winScreen = false; deathTimer = 0; stageTransition = 0;
     particles = [];
     document.getElementById('stageDisplay').textContent = stage.name;
     updateUI();
@@ -412,11 +371,7 @@ function loadStage(index) {
 
 function resetGame() {
     currentStageIndex = 0;
-    player = {
-        lives: 3,
-        coins: 0,
-        score: 0
-    };
+    player = {lives: 3, coins: 0, score: 0};
     loadStage(currentStageIndex);
 }
 
@@ -426,567 +381,549 @@ function updateUI() {
     document.getElementById('scoreDisplay').textContent = player.score || 0;
 }
 
-// ---------- Particle system ----------
 function addParticles(x, y, color, count = 8) {
     for (let i = 0; i < count; i++) {
         const angle = Math.random() * Math.PI * 2;
         const speed = 1 + Math.random() * 3;
         particles.push({
-            x, y,
-            vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed - 1,
-            life: 30 + Math.random() * 20,
-            maxLife: 50,
-            size: 3 + Math.random() * 4,
-            color: color
+            x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 1,
+            life: 30 + Math.random() * 20, maxLife: 50, size: 3 + Math.random() * 4, color
         });
     }
 }
 
-// ---------- Update ----------
+function updateParticles() {
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx; p.y += p.vy; p.vy += 0.1; p.life--;
+        if (p.life <= 0) particles.splice(i, 1);
+    }
+}
+
+function updateCamera() {
+    const stage = STAGES[currentStageIndex];
+    const maxCam = Math.max(0, stage.levelWidth - W);
+    let targetCam = player.x - 400;
+    if (targetCam < 0) targetCam = 0;
+    if (targetCam > maxCam) targetCam = maxCam;
+    camera.x += (targetCam - camera.x) * 0.12;
+}
+
+// ============================================================
+//  UPDATE
+// ============================================================
 function update() {
     frameCount++;
-    
-    if (gameOver) {
-        if (keys['r']) resetGame();
-        return;
-    }
-    
+    if (gameOver) { if (keys['r']) resetGame(); return; }
+
     if (winScreen) {
         stageTransition++;
         if (stageTransition > 90) {
             currentStageIndex++;
             if (currentStageIndex >= STAGES.length) {
-                // Selesai semua stage
-                player.score += 10000;
-                updateUI();
-                // Tampilkan layar kemenangan total
-                // Kita akan reset ke stage pertama setelah delay
-                setTimeout(() => {
-                    resetGame();
-                }, 3000);
+                player.score += 10000; updateUI();
+                setTimeout(() => resetGame(), 3000);
                 return;
             }
             loadStage(currentStageIndex);
         }
         return;
     }
-    
+
     if (player.dead) {
         deathTimer++;
         if (deathTimer > 60) {
-            if (player.lives > 0) {
-                player.lives--;
-                updateUI();
-                loadStage(currentStageIndex);
-            } else {
-                gameOver = true;
-            }
+            if (player.lives > 0) { player.lives--; updateUI(); loadStage(currentStageIndex); }
+            else gameOver = true;
         }
         return;
     }
-    
-    // ---------- Player Input ----------
+
+    if (player.flagSliding) {
+        player.y += 3.4;
+        player.x = flag.x - player.w / 2;
+        const bottom = GROUND_Y - player.h;
+        if (player.y >= bottom) {
+            player.y = bottom; player.flagSliding = false;
+            player.walkingToCastle = true; player.walkTimer = 40;
+        }
+        updateParticles();
+        return;
+    }
+
+    if (player.walkingToCastle) {
+        player.walkTimer--; player.x += 2.2;
+        player.frameTimer++;
+        if (player.frameTimer > 6) { player.frameTimer = 0; player.frame = (player.frame + 1) % 2; }
+        updateCamera(); updateParticles();
+        if (player.walkTimer <= 0) {
+            player.walkingToCastle = false; winScreen = true;
+            player.score += 2000; updateUI();
+        }
+        return;
+    }
+
     let moveX = 0;
     if (keys['arrowleft']) moveX = -1;
     if (keys['arrowright']) moveX = 1;
-    
-    // Walk
+
     if (moveX !== 0) {
         player.vx += moveX * 0.55;
-        if (Math.abs(player.vx) > MAX_WALK_SPEED) {
-            player.vx = moveX * MAX_WALK_SPEED;
-        }
+        if (Math.abs(player.vx) > MAX_WALK_SPEED) player.vx = moveX * MAX_WALK_SPEED;
         player.facing = moveX;
-        // Animasi berjalan
         if (player.onGround) {
             player.frameTimer++;
-            if (player.frameTimer > 5) {
-                player.frameTimer = 0;
-                player.frame = (player.frame + 1) % 4;
-            }
+            if (player.frameTimer > 5) { player.frameTimer = 0; player.frame = (player.frame + 1) % 2; }
         }
     } else {
         player.vx *= FRICTION;
         if (Math.abs(player.vx) < 0.1) player.vx = 0;
-        if (player.onGround) {
-            player.frame = 0;
-            player.frameTimer = 0;
-        }
+        if (player.onGround) { player.frame = 0; player.frameTimer = 0; }
     }
-    
-    // Jump
-    if ((keys['z'] || keys['arrowup']) && player.onGround) {
-        player.vy = JUMP_FORCE;
-        player.onGround = false;
-    }
-    // Variable jump height
-    if (!keys['z'] && !keys['arrowup'] && player.vy < -2) {
-        player.vy *= 0.85;
-    }
-    
-    // Gravity
+
+    if ((keys['z'] || keys['arrowup']) && player.onGround) { player.vy = JUMP_FORCE; player.onGround = false; }
+    if (!keys['z'] && !keys['arrowup'] && player.vy < -2) player.vy *= 0.85;
+
     player.vy += GRAVITY;
     if (player.vy > MAX_FALL_SPEED) player.vy = MAX_FALL_SPEED;
-    
-    // ---------- Move X ----------
+
     player.x += player.vx;
     for (const p of platforms) {
         if (rectCollide(player, p)) {
-            if (player.vx > 0) {
-                player.x = p.x - player.w;
-            } else if (player.vx < 0) {
-                player.x = p.x + p.w;
-            }
+            if (player.vx > 0) player.x = p.x - player.w;
+            else if (player.vx < 0) player.x = p.x + p.w;
             player.vx = 0;
         }
     }
-    
-    // ---------- Move Y ----------
+
     player.y += player.vy;
     player.onGround = false;
-    
+
     for (const p of platforms) {
         if (rectCollide(player, p)) {
             if (player.vy > 0) {
-                // Landing on top
-                player.y = p.y - player.h;
-                player.vy = 0;
-                player.onGround = true;
-                
-                // Question block hit from below? No, dari atas tidak.
+                player.y = p.y - player.h; player.vy = 0; player.onGround = true;
             } else if (player.vy < 0) {
-                // Hit from below
-                player.y = p.y + p.h;
-                player.vy = 0;
-                // Jika question block
+                player.y = p.y + p.h; player.vy = 0;
                 if (p.type === 'question' && p.coin && !p.used) {
-                    p.used = true;
-                    p.coin = false;
-                    player.coins++;
-                    player.score += 200;
-                    updateUI();
+                    p.used = true; p.coin = false; p.bump = 8;
+                    player.coins++; player.score += 200; updateUI();
                     addParticles(p.x + p.w/2, p.y, '#f0c040', 12);
-                }
-                // Jika brick, hancurkan? (efek visual)
-                if (p.type === 'brick') {
-                    // Kita tidak menghancurkan brick, tapi beri efek
-                    addParticles(p.x + p.w/2, p.y + p.h/2, '#c07a4a', 6);
+                } else if (p.type.startsWith('brick')) {
+                    p.bump = 6;
+                    addParticles(p.x + p.w/2, p.y + p.h/2, PAL.brick, 6);
                 }
             }
         }
     }
-    
-    // ---------- Collect Coins ----------
+
     for (const c of coins) {
         if (!c.collected) {
             const dx = player.x + player.w/2 - c.x;
             const dy = player.y + player.h/2 - c.y;
             if (Math.hypot(dx, dy) < 22) {
-                c.collected = true;
-                player.coins++;
-                player.score += 100;
-                updateUI();
+                c.collected = true; player.coins++; player.score += 100; updateUI();
                 addParticles(c.x, c.y, '#ffd700', 10);
             }
         }
     }
-    
-    // ---------- Update Enemies ----------
+
+    for (const p of platforms) {
+        if (p.bump) { p.bump *= 0.7; if (Math.abs(p.bump) < 0.3) p.bump = 0; }
+    }
+
     for (const e of enemies) {
         if (!e.alive) continue;
-        
+        if (e.squish > 0) { e.squish--; if (e.squish <= 0) e.alive = false; continue; }
+
+        e.walkPhase += 0.15;
         e.x += e.vx;
-        // Enemy gravity
         e.vy += GRAVITY;
         e.y += e.vy;
         e.onGround = false;
-        
-        // Collision dengan platform
+
         for (const p of platforms) {
             if (rectCollide(e, p)) {
-                if (e.vy > 0) {
-                    e.y = p.y - e.h;
-                    e.vy = 0;
-                    e.onGround = true;
-                } else if (e.vy < 0) {
-                    e.y = p.y + p.h;
-                    e.vy = 0;
-                }
-                // Horizontal
-                if (e.vx > 0 && e.x + e.w > p.x && e.x < p.x) {
-                    e.x = p.x - e.w;
-                    e.vx *= -1;
-                } else if (e.vx < 0 && e.x < p.x + p.w && e.x + e.w > p.x + p.w) {
-                    e.x = p.x + p.w;
-                    e.vx *= -1;
-                }
+                if (e.vy > 0) { e.y = p.y - e.h; e.vy = 0; e.onGround = true; }
+                else if (e.vy < 0) { e.y = p.y + p.h; e.vy = 0; }
+                if (e.vx > 0 && e.x + e.w > p.x && e.x < p.x) { e.x = p.x - e.w; e.vx *= -1; }
+                else if (e.vx < 0 && e.x < p.x + p.w && e.x + e.w > p.x + p.w) { e.x = p.x + p.w; e.vx *= -1; }
             }
         }
-        
-        // Jika jatuh
-        if (e.y > H + 50) e.alive = false;
-        
-        // Collision dengan player
+
+        if (e.y > H + 80) e.alive = false;
+
         if (!player.invincible && !player.dead && rectCollide(player, e)) {
             if (player.vy > 0 && player.y + player.h - e.y < 30) {
-                // Stomp
-                e.alive = false;
-                player.vy = -8;
-                player.score += 500;
-                updateUI();
-                addParticles(e.x + e.w/2, e.y + e.h/2, '#8a4a3a', 12);
+                e.squish = 14; e.vx = 0;
+                player.vy = -8; player.score += 500; updateUI();
+                addParticles(e.x + e.w/2, e.y + e.h/2, PAL.goombaDark, 12);
             } else {
-                // Hit
-                player.dead = true;
-                player.vy = -8;
-                deathTimer = 0;
-                player.lives--;
-                updateUI();
+                player.dead = true; player.vy = -8; deathTimer = 0;
+                player.lives--; updateUI();
             }
         }
     }
-    
-    // ---------- Flag ----------
-    if (!player.dead) {
+
+    if (!player.dead && !player.flagSliding) {
         const dx = player.x + player.w/2 - flag.x;
         const dy = player.y + player.h - flag.y;
-        if (Math.abs(dx) < 20 && dy > -10 && dy < 30) {
-            winScreen = true;
-            player.score += 2000;
-            updateUI();
-            addParticles(flag.x, flag.y, '#ffd700', 20);
+        if (Math.abs(dx) < 24 && dy > -10 && dy < flag.height + 20) {
+            player.flagSliding = true; player.vx = 0; player.vy = 0;
+            addParticles(flag.x, flag.y, '#ffd700', 16);
         }
     }
-    
-    // ---------- Fall off ----------
-    if (player.y > H + 50) {
-        player.dead = true;
-        player.lives--;
-        updateUI();
-        deathTimer = 0;
-    }
-    
-    // ---------- Camera ----------
-    let targetCam = player.x - 400;
-    if (targetCam < 0) targetCam = 0;
-    if (targetCam > 500) targetCam = 500;
-    camera.x += (targetCam - camera.x) * 0.08;
-    
-    // ---------- Invincibility timer ----------
+
+    if (player.y > H + 80) { player.dead = true; player.lives--; updateUI(); deathTimer = 0; }
+
+    updateCamera();
     if (player.invincible > 0) player.invincible--;
-    
-    // ---------- Update Particles ----------
-    for (let i = particles.length - 1; i >= 0; i--) {
-        const p = particles[i];
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vy += 0.1;
-        p.life--;
-        if (p.life <= 0) particles.splice(i, 1);
-    }
+    updateParticles();
 }
 
-// ---------- Draw ----------
+// ============================================================
+//  DRAW HELPERS - SPRITES (flat, tanpa shadow blur, gaya NES)
+// ============================================================
+function drawMario(dx, dy, w, h, facing, frame, onGround, jumping) {
+    ctx.save();
+    ctx.translate(dx + w/2, dy + h/2);
+    if (facing < 0) ctx.scale(-1, 1);
+
+    const legOffset = jumping ? 0 : (onGround ? (frame === 1 ? 3 : -3) : 0);
+    const armUp = jumping;
+
+    // sepatu
+    ctx.fillStyle = PAL.hair;
+    if (jumping) { ctx.fillRect(-9, 12, 9, 6); ctx.fillRect(2, 12, 9, 6); }
+    else { ctx.fillRect(-10 + legOffset, 12, 9, 6); ctx.fillRect(1 - legOffset, 12, 9, 6); }
+
+    // overall (kaki + badan)
+    ctx.fillStyle = PAL.marioBlue;
+    if (jumping) { ctx.fillRect(-8, -2, 7, 15); ctx.fillRect(1, -2, 7, 15); }
+    else { ctx.fillRect(-9 + legOffset, -2, 7, 15); ctx.fillRect(2 - legOffset, -2, 7, 15); }
+    ctx.fillRect(-9, -4, 18, 10);
+
+    // kancing kuning
+    ctx.fillStyle = PAL.buttonYellow;
+    ctx.fillRect(-6, -4, 3, 3); ctx.fillRect(3, -4, 3, 3);
+
+    // lengan baju
+    ctx.fillStyle = PAL.marioRed;
+    if (armUp) { ctx.fillRect(-13, -14, 6, 10); ctx.fillRect(7, -3, 6, 8); }
+    else { ctx.fillRect(-13, -3, 6, 9); ctx.fillRect(7, -3, 6, 9); }
+
+    // sarung tangan
+    ctx.fillStyle = PAL.white;
+    if (armUp) ctx.fillRect(-13, -18, 6, 6);
+    else { ctx.fillRect(-14, 4, 6, 5); ctx.fillRect(8, 4, 6, 5); }
+
+    // dada baju
+    ctx.fillStyle = PAL.marioRed;
+    ctx.fillRect(-9, -8, 18, 5);
+
+    // wajah
+    ctx.fillStyle = PAL.skin;
+    ctx.fillRect(-8, -20, 17, 12);
+    ctx.fillStyle = PAL.hair;
+    ctx.fillRect(-9, -16, 4, 7); // jambang
+    ctx.fillRect(-3, -11, 12, 3); // kumis
+    ctx.fillRect(-4, -13, 4, 3);
+    ctx.fillStyle = PAL.skin;
+    ctx.fillRect(7, -13, 4, 4); // hidung
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(1, -16, 3, 3); // mata
+
+    // topi
+    ctx.fillStyle = PAL.marioRed;
+    ctx.fillRect(-9, -24, 18, 5);
+    ctx.fillRect(-9, -20, 22, 3);
+    ctx.fillStyle = PAL.marioRedDark;
+    ctx.fillRect(0, -21, 5, 2);
+
+    ctx.restore();
+}
+
+function drawGoomba(dx, dy, w, h, phase, squish) {
+    ctx.save();
+    ctx.translate(dx + w/2, dy + h/2);
+    const sq = squish > 0 ? squish / 14 : 0;
+    ctx.scale(1 + sq * 0.5, 1 - sq * 0.7);
+    ctx.translate(0, h/2 * sq * 0.6);
+
+    ctx.fillStyle = PAL.goomba;
+    ctx.beginPath();
+    ctx.moveTo(-w/2, 0);
+    ctx.quadraticCurveTo(-w/2, -h/2, 0, -h/2);
+    ctx.quadraticCurveTo(w/2, -h/2, w/2, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#E89858';
+    ctx.fillRect(-w/2+2, 0, w-4, h/2 - 6);
+
+    if (squish <= 0) {
+        const footShift = Math.sin(phase) * 2;
+        ctx.fillStyle = PAL.goombaFoot;
+        ctx.fillRect(-w/2 + 1 + footShift, h/2 - 6, w/2 - 3, 6);
+        ctx.fillRect(1 - footShift, h/2 - 6, w/2 - 3, 6);
+
+        ctx.fillStyle = '#2a1608';
+        ctx.fillRect(-w/2 + 4, -h/2 + 8, 8, 3);
+        ctx.fillRect(2, -h/2 + 8, 8, 3);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(-w/2 + 4, -h/2 + 11, 7, 7);
+        ctx.fillRect(2, -h/2 + 11, 7, 7);
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(-w/2 + 7, -h/2 + 14, 3, 4);
+        ctx.fillRect(5, -h/2 + 14, 3, 4);
+    } else {
+        ctx.strokeStyle = '#2a1608'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(-w/2+5,-2); ctx.lineTo(-w/2+11,4); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-w/2+11,-2); ctx.lineTo(-w/2+5,4); ctx.stroke();
+    }
+    ctx.restore();
+}
+
+function drawCastle(dx) {
+    ctx.fillStyle = PAL.castleGray;
+    ctx.fillRect(dx, GROUND_Y - 100, 130, 100);
+    ctx.fillStyle = PAL.castleDark;
+    for (let i=0;i<5;i++) ctx.fillRect(dx + i*28 - 4, GROUND_Y - 112, 14, 14);
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(dx + 50, GROUND_Y - 46, 24, 46);
+    ctx.fillStyle = '#3a2a1a';
+    ctx.beginPath(); ctx.arc(dx + 62, GROUND_Y - 46, 12, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = PAL.castleDark;
+    ctx.fillRect(dx+20, GROUND_Y-70, 10, 10);
+    ctx.fillRect(dx+96, GROUND_Y-70, 10, 10);
+}
+
+// ============================================================
+//  DRAW
+// ============================================================
 function draw() {
     ctx.clearRect(0, 0, W, H);
-    
     const stage = STAGES[currentStageIndex];
-    // Background gradient
+
     let grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, stage.bgColor1);
-    grad.addColorStop(1, stage.bgColor2);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, H);
-    
-    // Clouds (berbeda tiap stage)
-    const cloudPositions = [
-        {x:100, y:50, s:1.5}, {x:350, y:30, s:1.0}, {x:600, y:60, s:1.8},
-        {x:850, y:40, s:1.2}, {x:1100, y:55, s:1.4}, {x:1350, y:35, s:1.1}
-    ];
-    for (const c of cloudPositions) {
-        const cx = (c.x - camera.x * 0.2) % 1800 - 200;
-        ctx.fillStyle = 'rgba(255,255,255,0.15)';
-        ctx.beginPath();
-        ctx.arc(cx - 30*c.s, c.y, 25*c.s, 0, Math.PI*2);
-        ctx.arc(cx, c.y - 15*c.s, 30*c.s, 0, Math.PI*2);
-        ctx.arc(cx + 30*c.s, c.y, 25*c.s, 0, Math.PI*2);
-        ctx.fill();
+    grad.addColorStop(0, stage.bgColor1); grad.addColorStop(1, stage.bgColor2);
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+
+    const underground = stage.theme === 'underground';
+    const castle = stage.theme === 'castle';
+
+    if (!underground && !castle) {
+        const cloudPositions = [
+            {x:100, y:50, s:1.5}, {x:350, y:30, s:1.0}, {x:600, y:60, s:1.8},
+            {x:850, y:40, s:1.2}, {x:1100, y:55, s:1.4}, {x:1350, y:35, s:1.1},
+            {x:1650, y:45, s:1.3}, {x:1950, y:35, s:1.0}, {x:2250, y:55, s:1.5},
+        ];
+        for (const c of cloudPositions) {
+            const cx = c.x - camera.x * 0.4;
+            if (cx < -150 || cx > W + 150) continue;
+            ctx.fillStyle = '#FCFCFC';
+            ctx.beginPath();
+            ctx.arc(cx - 30*c.s, c.y, 25*c.s, 0, Math.PI*2);
+            ctx.arc(cx, c.y - 15*c.s, 30*c.s, 0, Math.PI*2);
+            ctx.arc(cx + 30*c.s, c.y, 25*c.s, 0, Math.PI*2);
+            ctx.fill();
+        }
+        ctx.fillStyle = 'rgba(0,168,0,0.35)';
+        for (const hl of hills) {
+            const hx = hl.x - camera.x * 0.6;
+            if (hx < -120 || hx > W + 120) continue;
+            ctx.beginPath(); ctx.arc(hx, GROUND_Y + 10, hl.r, Math.PI, 0); ctx.fill();
+        }
+        ctx.fillStyle = '#00A800';
+        for (const b of bushes) {
+            const bx = b.x - camera.x * 0.85;
+            if (bx < -60 || bx > W + 60) continue;
+            const s = b.scale;
+            ctx.beginPath();
+            ctx.arc(bx, GROUND_Y - 6, 14*s, 0, Math.PI*2);
+            ctx.arc(bx + 16*s, GROUND_Y - 10, 16*s, 0, Math.PI*2);
+            ctx.arc(bx + 32*s, GROUND_Y - 6, 14*s, 0, Math.PI*2);
+            ctx.fill();
+        }
+    } else {
+        ctx.fillStyle = underground ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.25)';
+        const off = camera.x % 40;
+        for (let x = -off; x < W; x += 40) {
+            for (let y = 0; y < H; y += 40) {
+                ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+                ctx.strokeRect(x, y, 40, 40);
+            }
+        }
     }
-    
+
     const drawX = (x) => x - camera.x;
-    
-    // ---------- Draw Platforms ----------
+
     for (const p of platforms) {
         const dx = drawX(p.x);
-        if (dx < -100 || dx > 1000) continue;
-        
-        if (p.type === 'ground') {
-            ctx.fillStyle = '#6aaa4a';
-            ctx.fillRect(dx, p.y, p.w, 8);
-            ctx.fillStyle = '#8a7a5a';
-            ctx.fillRect(dx, p.y+8, p.w, p.h-8);
-            // Rumput
-            ctx.fillStyle = '#5a9a3a';
-            for (let i=0; i<p.w; i+=6) {
-                ctx.fillRect(dx+i, p.y-2, 2, 4);
+        if (dx < -140 || dx > W + 20) continue;
+        const by = p.y - (p.bump || 0);
+
+        if (p.type.startsWith('ground') || p.type.startsWith('stair')) {
+            const uType = p.type.includes('_u') ? 'u' : (p.type.includes('castle') ? 'c' : (p.type.includes('_c') ? 'c' : 'g'));
+            const top = uType==='u' ? '#3a3a6a' : (uType==='c' ? '#6a4a4a' : PAL.groundTop);
+            const body = uType==='u' ? '#26264a' : (uType==='c' ? '#4a2a2a' : PAL.groundBody);
+            ctx.fillStyle = top; ctx.fillRect(dx, p.y, p.w, Math.min(8,p.h));
+            ctx.fillStyle = body; ctx.fillRect(dx, p.y+8, p.w, Math.max(0,p.h-8));
+            ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = 1;
+            for (let i=0; i<p.w; i+=24) { ctx.strokeRect(dx+i, p.y+8, 24, 16); ctx.strokeRect(dx+i-12, p.y+24, 24, 16); }
+            if (uType==='g' && !p.type.startsWith('stair')) {
+                ctx.fillStyle = '#4ec22e';
+                for (let i=0; i<p.w; i+=6) ctx.fillRect(dx+i, p.y-2, 2, 4);
+            } else if (p.type.startsWith('stair')) {
+                ctx.fillStyle = uType==='g' ? '#4ec22e' : (uType==='c' ? '#a86a4a' : '#5a5a9a');
+                for (let i=0; i<p.w; i+=6) ctx.fillRect(dx+i, p.y-2, 2, 4);
             }
-        } else if (p.type === 'brick') {
-            ctx.fillStyle = '#c07a4a';
-            ctx.fillRect(dx, p.y, p.w, p.h);
-            ctx.strokeStyle = '#8a5a3a';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(dx, p.y, p.w, p.h);
-            // Pola bata
-            for (let i=0; i<p.w; i+=p.w/2) {
-                ctx.strokeRect(dx+i, p.y, p.w/2, p.h/2);
-                ctx.strokeRect(dx+i - p.w/4, p.y+p.h/2, p.w/2, p.h/2);
-            }
+        } else if (p.type === 'brick' || p.type === 'brick_u' || p.type === 'brick_c') {
+            const c1 = p.type === 'brick' ? PAL.brick : (p.type === 'brick_u' ? '#4a4a8a' : '#8a4a3a');
+            const c2 = p.type === 'brick' ? PAL.brickDark : (p.type === 'brick_u' ? '#2a2a5a' : '#5a2a1a');
+            ctx.fillStyle = c1; ctx.fillRect(dx, by, p.w, p.h);
+            ctx.strokeStyle = c2; ctx.lineWidth = 2; ctx.strokeRect(dx+1, by+1, p.w-2, p.h-2);
+            ctx.strokeStyle = c2; ctx.beginPath();
+            ctx.moveTo(dx+p.w/2, by); ctx.lineTo(dx+p.w/2, by+p.h/2);
+            ctx.moveTo(dx, by+p.h/2); ctx.lineTo(dx+p.w, by+p.h/2);
+            ctx.moveTo(dx+p.w/4, by+p.h/2); ctx.lineTo(dx+p.w/4, by+p.h);
+            ctx.moveTo(dx+3*p.w/4, by+p.h/2); ctx.lineTo(dx+3*p.w/4, by+p.h);
+            ctx.stroke();
         } else if (p.type === 'question') {
             const isCoin = p.coin && !p.used;
-            ctx.fillStyle = isCoin ? '#f0c040' : '#8a8a8a';
-            ctx.fillRect(dx, p.y, p.w, p.h);
-            ctx.strokeStyle = isCoin ? '#c09020' : '#666';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(dx, p.y, p.w, p.h);
+            ctx.fillStyle = isCoin ? PAL.block : '#8a8a8a';
+            ctx.fillRect(dx, by, p.w, p.h);
+            ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2;
+            ctx.strokeRect(dx+1, by+1, p.w-2, p.h-2);
+            // rivet klasik di sudut
+            ctx.fillStyle = isCoin ? PAL.blockDark : '#5a5a5a';
+            ctx.fillRect(dx+3, by+3, 3, 3); ctx.fillRect(dx+p.w-6, by+3, 3, 3);
+            ctx.fillRect(dx+3, by+p.h-6, 3, 3); ctx.fillRect(dx+p.w-6, by+p.h-6, 3, 3);
             if (isCoin) {
                 const pulse = Math.sin(frameCount * 0.08) * 2;
                 ctx.fillStyle = '#fff';
-                ctx.font = 'bold 20px monospace';
-                ctx.textAlign = 'center';
-                ctx.fillText('?', dx+p.w/2, p.y+p.h/2+7+pulse/2);
+                ctx.font = 'bold 20px monospace'; ctx.textAlign = 'center';
+                ctx.fillText('?', dx+p.w/2, by+p.h/2+7+pulse/2);
             }
-        } else if (p.type === 'platform') {
-            ctx.fillStyle = '#8a7a5a';
-            ctx.fillRect(dx, p.y, p.w, p.h);
-            ctx.fillStyle = '#6a5a3a';
-            ctx.fillRect(dx, p.y, p.w, 2);
-            ctx.fillRect(dx, p.y+p.h-2, p.w, 2);
+        } else if (p.type === 'platform' || p.type === 'platform_u' || p.type === 'platform_c') {
+            const c1 = p.type === 'platform' ? PAL.groundBody : (p.type === 'platform_u' ? '#4a4a7a' : '#7a4a4a');
+            ctx.fillStyle = c1; ctx.fillRect(dx, p.y, p.w, p.h);
+            ctx.fillStyle = 'rgba(0,0,0,0.25)';
+            ctx.fillRect(dx, p.y, p.w, 2); ctx.fillRect(dx, p.y+p.h-2, p.w, 2);
         } else if (p.type === 'pipe') {
-            // Pipa
-            ctx.fillStyle = '#2a8a2a';
-            ctx.fillRect(dx-2, p.y-10, p.w+4, 10);
+            ctx.fillStyle = PAL.pipeDark;
+            ctx.fillRect(dx-3, p.y-10, p.w+6, 10);
             ctx.fillRect(dx, p.y, p.w, p.h);
-            ctx.fillStyle = '#3aaa3a';
-            ctx.fillRect(dx+4, p.y-6, p.w-12, 3);
-            ctx.fillRect(dx+3, p.y+4, p.w-8, 3);
-            ctx.fillRect(dx+3, p.y+p.h-8, p.w-8, 3);
+            ctx.fillStyle = PAL.pipeBody;
+            ctx.fillRect(dx+2, p.y-8, p.w-6, 6);
+            ctx.fillRect(dx+3, p.y+3, p.w-16, p.h-6);
+            ctx.fillStyle = PAL.pipeLight;
+            ctx.fillRect(dx+4, p.y-7, 6, 4);
+            ctx.fillRect(dx+5, p.y+5, 4, p.h-10);
         }
     }
-    
-    // ---------- Draw Coins ----------
+
     for (const c of coins) {
         if (c.collected) continue;
         const dx = drawX(c.x);
+        if (dx < -30 || dx > W+30) continue;
         const scale = Math.abs(Math.sin(frameCount * 0.06 + c.x));
-        ctx.shadowColor = '#f0c040';
-        ctx.shadowBlur = 20;
-        ctx.fillStyle = '#f0c040';
-        ctx.beginPath();
-        ctx.ellipse(dx, c.y, 8*scale+2, 8, 0, 0, Math.PI*2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = '#ffd700';
-        ctx.beginPath();
-        ctx.ellipse(dx, c.y, 4*scale+1, 4, 0, 0, Math.PI*2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
+        ctx.fillStyle = PAL.block;
+        ctx.beginPath(); ctx.ellipse(dx, c.y, 8*scale+2, 8, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#ffe680';
+        ctx.beginPath(); ctx.ellipse(dx, c.y, 4*scale+1, 4, 0, 0, Math.PI*2); ctx.fill();
     }
-    
-    // ---------- Draw Enemies ----------
+
     for (const e of enemies) {
         if (!e.alive) continue;
         const dx = drawX(e.x);
-        if (dx < -50 || dx > 1000) continue;
-        // Goomba
-        ctx.fillStyle = '#8a4a3a';
-        ctx.beginPath();
-        ctx.arc(dx+14, e.y+10, 14, Math.PI, 0);
-        ctx.fill();
-        ctx.fillRect(dx, e.y+10, 28, 14);
-        ctx.fillStyle = '#4a2a1a';
-        const footOff = Math.sin(frameCount*0.12 + e.x) * 3;
-        ctx.fillRect(dx+2+footOff, e.y+22, 10, 6);
-        ctx.fillRect(dx+16-footOff, e.y+22, 10, 6);
-        // Mata
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(dx+6, e.y+8, 6, 6);
-        ctx.fillRect(dx+16, e.y+8, 6, 6);
-        ctx.fillStyle = '#1a1a1a';
-        const eyeDir = e.vx > 0 ? 2 : 0;
-        ctx.fillRect(dx+8+eyeDir, e.y+10, 2, 3);
-        ctx.fillRect(dx+18+eyeDir, e.y+10, 2, 3);
-        // Alis
-        ctx.fillStyle = '#3a2a1a';
-        ctx.fillRect(dx+5, e.y+6, 8, 2);
-        ctx.fillRect(dx+15, e.y+6, 8, 2);
+        if (dx < -60 || dx > W+40) continue;
+        drawGoomba(dx, e.y, 28, 26, e.walkPhase, e.squish);
     }
-    
-    // ---------- Draw Flag ----------
+
+    // castle di akhir setiap stage
+    drawCastle(drawX(flag.x + 90));
+
+    // bendera
     const fdx = drawX(flag.x);
-    ctx.fillStyle = '#888';
-    ctx.fillRect(fdx, flag.y-10, 4, flag.height+10);
-    ctx.fillStyle = '#ffd700';
-    ctx.beginPath();
-    ctx.arc(fdx+2, flag.y-10, 6, 0, Math.PI*2);
-    ctx.fill();
-    // Bendera
-    const wave = Math.sin(frameCount*0.08)*3;
-    ctx.fillStyle = '#ff4444';
-    ctx.beginPath();
-    ctx.moveTo(fdx+4, flag.y-8);
-    ctx.quadraticCurveTo(fdx+25+wave, flag.y+5, fdx+4, flag.y+20);
-    ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.font = '14px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('★', fdx+14+wave/2, flag.y+8);
-    // Tiang
-    ctx.fillStyle = '#666';
-    ctx.fillRect(fdx-4, flag.y+flag.height-4, 12, 8);
-    
-    // ---------- Draw Player ----------
+    if (fdx > -40 && fdx < W+40) {
+        const poleTop = flag.y - 10;
+        ctx.fillStyle = '#9aa0a8';
+        ctx.fillRect(fdx, poleTop, 4, flag.height + 10);
+        ctx.fillStyle = '#ffd700';
+        ctx.beginPath(); ctx.arc(fdx+2, poleTop, 6, 0, Math.PI*2); ctx.fill();
+        let flagY = (winScreen || player.flagSliding || player.walkingToCastle) ? poleTop + 4 : flag.y;
+        const wave = Math.sin(frameCount*0.1)*3;
+        ctx.fillStyle = '#3fbf3f';
+        ctx.beginPath();
+        ctx.moveTo(fdx+4, flagY-8);
+        ctx.quadraticCurveTo(fdx+24+wave, flagY+4, fdx+4, flagY+18);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
+        ctx.fillText('M', fdx+13+wave/2, flagY+6);
+        ctx.fillStyle = '#6a6a6a';
+        ctx.fillRect(fdx-5, flag.y+flag.height-4, 14, 8);
+    }
+
     if (!player.dead && player.invincible % 4 < 2) {
         const dx = drawX(player.x);
-        const dy = player.y;
-        ctx.save();
-        ctx.translate(dx + player.w/2, dy + player.h/2);
-        if (player.facing < 0) ctx.scale(-1, 1);
-        
-        // Bayangan
-        ctx.shadowColor = 'rgba(0,0,0,0.2)';
-        ctx.shadowBlur = 10;
-        ctx.shadowOffsetY = 3;
-        
-        // Topi
-        ctx.fillStyle = '#e03030';
-        ctx.fillRect(-14, -20, 28, 6);
-        ctx.fillRect(-10, -24, 20, 5);
-        ctx.fillRect(-15, -17, 30, 3);
-        // Wajah
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = '#f0c0a0';
-        ctx.fillRect(-12, -14, 24, 14);
-        // Samping rambut
-        ctx.fillStyle = '#5a3a1a';
-        ctx.fillRect(-14, -16, 4, 10);
-        ctx.fillRect(10, -16, 4, 10);
-        // Kumis
-        ctx.fillStyle = '#5a3a1a';
-        ctx.fillRect(-10, -6, 20, 3);
-        ctx.fillRect(-13, -6, 4, 4);
-        ctx.fillRect(9, -6, 4, 4);
-        // Mata
-        ctx.fillStyle = '#1a1a1a';
-        ctx.fillRect(-5, -10, 3, 3);
-        ctx.fillRect(2, -10, 3, 3);
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(-4, -10, 1, 1);
-        ctx.fillRect(3, -10, 1, 1);
-        // Badan (overall)
-        ctx.fillStyle = '#e03030';
-        ctx.fillRect(-12, 2, 24, 14);
-        ctx.fillStyle = '#c02020';
-        ctx.fillRect(-10, -2, 4, 8);
-        ctx.fillRect(6, -2, 4, 8);
-        ctx.fillStyle = '#ffd700';
-        ctx.fillRect(-9, 2, 2, 2);
-        ctx.fillRect(7, 2, 2, 2);
-        // Sepatu
-        ctx.fillStyle = '#5a3a1a';
-        const walkOff = player.onGround ? Math.sin(frameCount*0.15 + (player.facing>0?0:1))*2 : 0;
-        ctx.fillRect(-12+walkOff, 16, 10, 6);
-        ctx.fillRect(2-walkOff, 16, 10, 6);
-        ctx.fillStyle = '#4a2a0a';
-        ctx.fillRect(-12+walkOff, 18, 10, 2);
-        ctx.fillRect(2-walkOff, 18, 10, 2);
-        
-        ctx.restore();
+        const jumping = !player.onGround && !player.flagSliding && !player.walkingToCastle;
+        let facing = player.facing, frame = player.frame;
+        if (player.flagSliding) { facing = -1; frame = 0; }
+        drawMario(dx, player.y, player.w, player.h, facing, frame, player.onGround || player.walkingToCastle, jumping);
     }
-    
-    // ---------- Particles ----------
+
     for (const p of particles) {
         const alpha = p.life / p.maxLife;
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = p.color;
+        ctx.globalAlpha = alpha; ctx.fillStyle = p.color;
         ctx.fillRect(p.x - camera.x, p.y, p.size, p.size);
     }
     ctx.globalAlpha = 1;
-    
-    // ---------- HUD ----------
+
+    // HUD
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(10, 10, 160, 30);
-    ctx.fillRect(180, 10, 120, 30);
-    ctx.fillRect(310, 10, 200, 30);
-    ctx.fillRect(W-100, 10, 90, 30);
-    
-    ctx.fillStyle = '#ff6b6b';
-    ctx.font = '20px monospace';
-    ctx.textAlign = 'left';
+    ctx.fillRect(10, 10, 160, 30); ctx.fillRect(180, 10, 120, 30);
+    ctx.fillRect(310, 10, 200, 30); ctx.fillRect(W-100, 10, 90, 30);
+    ctx.fillStyle = '#ff6b6b'; ctx.font = '20px monospace'; ctx.textAlign = 'left';
     ctx.fillText(`❤️ x${player.lives}`, 18, 33);
-    ctx.fillStyle = '#ffd700';
-    ctx.fillText(`🪙 ${player.coins}`, 188, 33);
-    ctx.fillStyle = '#fff';
-    ctx.fillText(`🏆 ${player.score}`, 318, 33);
-    ctx.fillStyle = '#4fc3f7';
-    ctx.textAlign = 'right';
+    ctx.fillStyle = '#ffd700'; ctx.fillText(`🪙 ${player.coins}`, 188, 33);
+    ctx.fillStyle = '#fff'; ctx.fillText(`🏆 ${player.score}`, 318, 33);
+    ctx.fillStyle = '#4fc3f7'; ctx.textAlign = 'right';
     ctx.fillText(`🌟 ${STAGES[currentStageIndex].name}`, W-18, 33);
-    
-    // ---------- Game Over ----------
+
     if (gameOver) {
-        ctx.fillStyle = 'rgba(0,0,0,0.85)';
-        ctx.fillRect(0, 0, W, H);
-        ctx.fillStyle = '#ff1744';
-        ctx.font = 'bold 72px monospace';
-        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(0,0,0,0.85)'; ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#ff1744'; ctx.font = 'bold 72px monospace'; ctx.textAlign = 'center';
         ctx.fillText('GAME OVER', W/2, 210);
-        ctx.fillStyle = '#fff';
-        ctx.font = '28px monospace';
+        ctx.fillStyle = '#fff'; ctx.font = '28px monospace';
         ctx.fillText('Tekan R untuk restart', W/2, 270);
-        ctx.fillStyle = '#888';
-        ctx.font = '20px monospace';
+        ctx.fillStyle = '#888'; ctx.font = '20px monospace';
         ctx.fillText(`Score: ${player.score}`, W/2, 320);
     }
-    
-    // ---------- Win Screen ----------
+
     if (winScreen) {
-        ctx.fillStyle = 'rgba(0,0,0,0.7)';
-        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, W, H);
         const pulse = Math.sin(frameCount*0.08)*5;
-        ctx.fillStyle = '#ffd700';
-        ctx.font = 'bold 64px monospace';
-        ctx.textAlign = 'center';
+        ctx.fillStyle = '#ffd700'; ctx.font = 'bold 64px monospace'; ctx.textAlign = 'center';
         ctx.fillText('🎉 STAGE CLEAR! 🎉', W/2, 190+pulse/2);
-        ctx.fillStyle = '#fff';
-        ctx.font = '30px monospace';
+        ctx.fillStyle = '#fff'; ctx.font = '30px monospace';
         ctx.fillText(`Score: ${player.score}`, W/2, 250);
-        const nextStage = currentStageIndex < STAGES.length-1 ? 
-            STAGES[currentStageIndex+1].name : '★ FINISH! ★';
-        ctx.fillStyle = '#4fc3f7';
-        ctx.font = '24px monospace';
+        const nextStage = currentStageIndex < STAGES.length-1 ? STAGES[currentStageIndex+1].name : '★ FINISH! ★';
+        ctx.fillStyle = '#4fc3f7'; ctx.font = '24px monospace';
         ctx.fillText(`Next: ${nextStage}`, W/2, 300);
         if (currentStageIndex >= STAGES.length-1) {
-            ctx.fillStyle = '#ffd700';
-            ctx.font = 'bold 36px monospace';
+            ctx.fillStyle = '#ffd700'; ctx.font = 'bold 36px monospace';
             ctx.fillText('🏆 YOU WIN THE GAME! 🏆', W/2, 360);
         }
-        // Progress bar
         const progress = (stageTransition % 90) / 90;
-        ctx.fillStyle = 'rgba(255,255,255,0.2)';
-        ctx.fillRect(W/2-200, 340, 400, 10);
-        ctx.fillStyle = '#4fc3f7';
-        ctx.fillRect(W/2-200, 340, 400*progress, 10);
+        ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.fillRect(W/2-200, 340, 400, 10);
+        ctx.fillStyle = '#4fc3f7'; ctx.fillRect(W/2-200, 340, 400*progress, 10);
     }
 }
 
-// ---------- Main Loop ----------
-function loop() {
-    update();
-    draw();
-    requestAnimationFrame(loop);
-}
+function loop() { update(); draw(); requestAnimationFrame(loop); }
 
-// ---------- Start ----------
 resetGame();
 loop();
 </script>
