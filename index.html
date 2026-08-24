@@ -60,16 +60,16 @@ document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 
 // ---------- Fisika (diperhalus lagi: akselerasi lebih landai, kecepatan
 //            puncak lebih rendah, gravitasi & lompatan lebih lembut) ----------
-const GRAVITY = 0.38;
+const GRAVITY = 0.26;         // lebih rendah -> lompatan lebih lama melayang
 const FRICTION_GROUND = 0.88;
 const FRICTION_AIR = 0.95;
-const ACCEL_EASE = 0.11;     // seberapa cepat vx mendekati target (eased, bukan linear)
-const RUN_ACCEL_EASE = 0.15;
-const MAX_WALK_SPEED = 2.9;
-const MAX_RUN_SPEED = 5.0;
-const JUMP_FORCE = -9.6;
-const RUN_JUMP_BONUS = -0.7;
-const MAX_FALL_SPEED = 10;
+const ACCEL_EASE = 0.085;     // akselerasi lebih landai -> jalan terasa lebih pelan
+const RUN_ACCEL_EASE = 0.11;
+const MAX_WALK_SPEED = 2.2;
+const MAX_RUN_SPEED = 3.8;
+const JUMP_FORCE = -8.6;
+const RUN_JUMP_BONUS = -0.6;
+const MAX_FALL_SPEED = 9;
 const COYOTE_FRAMES = 7;
 const JUMP_BUFFER_FRAMES = 7;
 
