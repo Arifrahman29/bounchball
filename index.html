@@ -1,1108 +1,769 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="id">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Super Mario Bros - Classic Edition</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nokia Snake Classic</title>
+
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{background:#0a0a1a;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:'Courier New',monospace;overflow:hidden}
-#wrap{position:relative;width:min(1000px,100vw);padding:10px}
-#gameContainer{background:#000;border-radius:16px;padding:8px;box-shadow:0 0 80px rgba(0,150,255,0.2), inset 0 0 40px rgba(0,0,0,0.5)}
-canvas{display:block;width:100%;image-rendering:pixelated;background:#5c94fc;border-radius:8px}
-#controls{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding:12px 20px;background:rgba(10,10,26,0.95);border-radius:12px;border:1px solid #2a2a4a;flex-wrap:wrap;gap:8px}
-#controls kbd{background:#1a1a3a;color:#4fc3f7;padding:6px 14px;border-radius:6px;font-size:13px;border:2px solid #3a3a5a;font-weight:bold;min-width:40px;text-align:center}
-#controls span{color:#666;font-size:13px;margin:0 4px}
-#status{color:#4fc3f7;font-size:14px;font-weight:bold;display:flex;gap:20px;align-items:center}
-#status .label{color:#888;font-weight:normal}
-#status .value{color:#ffd700}
-#hint{color:#555;font-size:11px;text-align:center;margin-top:6px}
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    background: #151515;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-family: Arial, sans-serif;
+}
+
+.phone {
+    width: 390px;
+    background: #b7b7b7;
+    border-radius: 35px 35px 45px 45px;
+    padding: 28px 25px 35px;
+    box-shadow:
+        inset 0 0 0 4px #777,
+        0 15px 40px rgba(0,0,0,.7);
+}
+
+/* LOGO */
+.logo {
+    text-align: center;
+    font-weight: bold;
+    font-size: 27px;
+    letter-spacing: 3px;
+    color: #303030;
+    margin-bottom: 20px;
+}
+
+/* LCD */
+.screen {
+    background: #9baa70;
+    border: 10px solid #383838;
+    border-radius: 8px;
+    padding: 8px;
+    box-shadow:
+        inset 0 0 10px rgba(0,0,0,.35),
+        0 3px 5px rgba(0,0,0,.4);
+}
+
+.info {
+    display: flex;
+    justify-content: space-between;
+    color: #26351a;
+    font-size: 13px;
+    font-weight: bold;
+    height: 20px;
+}
+
+canvas {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    image-rendering: pixelated;
+    background: #a9b77a;
+}
+
+/* GAME MESSAGE */
+.message {
+    position: absolute;
+    width: 302px;
+    margin-top: -205px;
+    text-align: center;
+    color: #26351a;
+    font-weight: bold;
+    pointer-events: none;
+}
+
+.message .title {
+    font-size: 20px;
+    margin-bottom: 8px;
+}
+
+.message .small {
+    font-size: 12px;
+}
+
+/* KEYPAD */
+.keypad {
+    margin-top: 25px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.row {
+    display: flex;
+    gap: 8px;
+}
+
+.key {
+    width: 58px;
+    height: 42px;
+    border-radius: 12px;
+    border: 2px solid #666;
+    background: linear-gradient(#eeeeee, #aaa);
+    box-shadow:
+        0 4px 0 #777,
+        0 6px 8px rgba(0,0,0,.3);
+    font-size: 18px;
+    font-weight: bold;
+    color: #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+}
+
+.key:active {
+    transform: translateY(4px);
+    box-shadow: 0 0 0 #777;
+}
+
+.center {
+    width: 75px;
+    height: 45px;
+    border-radius: 18px;
+    background: linear-gradient(#444, #222);
+    color: #ddd;
+    font-size: 11px;
+}
+
+/* EXTRA BUTTONS */
+.buttons {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 18px;
+    padding: 0 25px;
+}
+
+.small-key {
+    width: 75px;
+    height: 30px;
+    border-radius: 15px;
+    background: #333;
+    color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 10px;
+    font-weight: bold;
+}
 </style>
 </head>
+
 <body>
-<div id="wrap">
-<div id="gameContainer">
-<canvas id="game" width="960" height="480"></canvas>
+
+<div class="phone">
+
+    <div class="logo">NOKIA</div>
+
+    <div class="screen">
+
+        <div class="info">
+            <span>SCORE: <span id="score">0</span></span>
+            <span>HI: <span id="high">0</span></span>
+        </div>
+
+        <canvas id="game" width="240" height="240"></canvas>
+
+    </div>
+
+    <div class="keypad">
+
+        <div class="row">
+            <div class="key" data-key="ArrowUp">▲</div>
+        </div>
+
+        <div class="row">
+            <div class="key" data-key="ArrowLeft">◀</div>
+            <div class="key center">OK</div>
+            <div class="key" data-key="ArrowRight">▶</div>
+        </div>
+
+        <div class="row">
+            <div class="key" data-key="ArrowDown">▼</div>
+        </div>
+
+    </div>
+
+    <div class="buttons">
+        <div class="small-key">MENU</div>
+        <div class="small-key">EXIT</div>
+    </div>
+
 </div>
-<div id="controls">
-<div>
-<kbd>←</kbd><kbd>→</kbd> <span>|</span> <kbd>↑</kbd><kbd>Z</kbd> <span>lompat</span> <span>|</span> <kbd>SHIFT</kbd> <span>lari</span> <span>|</span> <kbd>R</kbd> <span>ulang</span>
-</div>
-<div id="status">
-<span><span class="label">❤️</span> <span class="value" id="livesDisplay">3</span></span>
-<span><span class="label">🪙</span> <span class="value" id="coinDisplay">0</span></span>
-<span><span class="label">🏆</span> <span class="value" id="scoreDisplay">0</span></span>
-<span><span class="label">🌟</span> <span class="value" id="stageDisplay">1-1</span></span>
-<span id="powerDisplay" style="color:#8bffb0"></span>
-</div>
-</div>
-<div id="hint">Lompati jurang, injak Goomba dari atas, ambil jamur dari blok "?" untuk jadi besar! Tahan SHIFT untuk lari.</div>
-</div>
+
 <script>
-// ============================================================
-//  SUPER MARIO BROS - CLASSIC EDITION (versi diperhalus)
-// ============================================================
 
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
-const W = 960, H = 480;
-const GROUND_Y = 420;
-const T = 32;
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
 
-// ---------- Keyboard ----------
-const keys = {};
-document.addEventListener('keydown', e => {
-    keys[e.key.toLowerCase()] = true;
-    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' ','Shift'].includes(e.key)) e.preventDefault();
-});
-document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+const scoreEl = document.getElementById("score");
+const highEl = document.getElementById("high");
 
-// ---------- Fisika (diperhalus: akselerasi bertahap, lari, coyote time, jump buffer) ----------
-const GRAVITY = 0.52;
-const FRICTION_GROUND = 0.84;
-const FRICTION_AIR = 0.92;
-const ACCEL = 0.62;
-const RUN_ACCEL = 0.85;
-const MAX_WALK_SPEED = 4.2;
-const MAX_RUN_SPEED = 7.4;
-const JUMP_FORCE = -11.2;
-const RUN_JUMP_BONUS = -1.0;
-const MAX_FALL_SPEED = 13;
-const COYOTE_FRAMES = 7;
-const JUMP_BUFFER_FRAMES = 7;
+const SIZE = 12;
+const GRID = canvas.width / SIZE;
 
-function rectCollide(a, b) {
-    return a.x < b.x + b.w && a.x + a.w > b.x &&
-           a.y < b.y + b.h && a.y + a.h > b.y;
-}
+let snake;
+let food;
+let direction;
+let nextDirection;
 
-// ---------- Palet warna gaya NES ----------
-const PAL = {
-    marioRed: '#D82800', marioRedDark: '#941600',
-    marioBlue: '#0058F8', marioBlueDark: '#002888',
-    skin: '#F8B888', skinShade:'#D88858', hair: '#5c2e0e', hairDark:'#3a1a06',
-    white: '#FCFCFC', buttonYellow: '#F8B800',
-    brick: '#C84C0C', brickDark: '#943C00', brickLight:'#E8703C',
-    block: '#FCA044', blockDark: '#B87818', blockLight:'#FFD080',
-    pipeLight: '#3CE83C', pipeBody: '#00A800', pipeDark: '#005800',
-    goomba: '#C86428', goombaDark: '#7C2C00', goombaFoot: '#3a1608', goombaBelly:'#F0A868',
-    groundTop: '#6AAA4A', groundTopDark:'#4a8a2a', groundBody: '#A8703C', groundBodyDark:'#7a4e24',
-    castleGray: '#9a9a9a', castleDark:'#5a5a5a',
-    mushCap:'#E8000C', mushCapDark:'#a80000', mushSpot:'#FCFCFC', mushStem:'#FCE0B4', mushStemShade:'#D8A868'
-};
+let score = 0;
+let highScore = Number(localStorage.getItem("snakeHighScore")) || 0;
 
-// ---------- Helper: bikin segmen tanah dengan jurang ----------
-function groundWithGaps(totalWidth, gaps, type='ground') {
-    const segs = [];
-    let cursor = 0;
-    const sorted = [...gaps].sort((a,b)=>a[0]-b[0]);
-    for (const [gs, ge] of sorted) {
-        if (gs > cursor) segs.push({x:cursor, y:GROUND_Y, w:gs-cursor, h:60, type});
-        cursor = ge;
-    }
-    if (cursor < totalWidth) segs.push({x:cursor, y:GROUND_Y, w:totalWidth-cursor, h:60, type});
-    return segs;
-}
-
-function staircase(startX, steps, dir, groundType, stepW=32) {
-    const out = [];
-    for (let i = 0; i < steps; i++) {
-        const h = dir === 1 ? (i+1)*stepW : (steps-i)*stepW;
-        out.push({x: startX + i*stepW, y: GROUND_Y - h, w: stepW, h: h, type: 'stair_'+groundType});
-    }
-    return out;
-}
-
-// ============================================================
-//  STAGE 1-1 — layout dirapikan lebih dekat ke struktur ikonik
-//  aslinya: blok jamur rahasia di awal -> deretan bata/koin ->
-//  pipa naik bertingkat (2,3,4 tile) -> jurang pertama -> area
-//  goomba & koin -> jurang kedua -> tangga naik-turun -> bendera
-// ============================================================
-const LV11_WIDTH = 2680;
-const LV11_GAPS = [[720,808],[1660,1780]];
-
-const stage11 = {
-    name: '1-1', theme:'overworld', bgColor1:'#5C94FC', bgColor2:'#8fb8ff',
-    levelWidth: LV11_WIDTH,
-    platforms: [
-        ...groundWithGaps(LV11_WIDTH, LV11_GAPS),
-        // blok tunggal awal berisi JAMUR (klasik!)
-        {x:176, y:296, w:32, h:32, type:'question', item:'mushroom'},
-        // deretan 4 blok klasik (bata - koin - bata - koin)
-        {x:352, y:296, w:32, h:32, type:'brick'},
-        {x:384, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:416, y:296, w:32, h:32, type:'brick'},
-        {x:448, y:296, w:32, h:32, type:'question', item:'coin'},
-        // pipa bertingkat naik 2,3,4 tile (persis pola aslinya)
-        {x:560, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
-        {x:660, y:GROUND_Y-96, w:56, h:96, type:'pipe'},
-        {x:770, y:GROUND_Y-128, w:56, h:128, type:'pipe'},
-        // setelah jurang pertama: blok + platform layang
-        {x:900, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:932, y:296, w:32, h:32, type:'brick'},
-        {x:964, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:1080, y:260, w:96, h:20, type:'platform'},
-        {x:1260, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
-        {x:1420, y:296, w:32, h:32, type:'question', item:'mushroom'},
-        {x:1452, y:296, w:32, h:32, type:'brick'},
-        // setelah jurang kedua: tangga naik lalu turun menuju bendera
-        ...staircase(1860, 4, 1, 'gnd'),
-        ...staircase(1988, 4, -1, 'gnd'),
-        {x:2116, y:GROUND_Y, w:420, h:60, type:'ground'},
-    ],
-    enemies: [
-        {x:220, y:392, type:'goomba'},
-        {x:600, y:392, type:'goomba'},
-        {x:860, y:392, type:'goomba'},
-        {x:1000, y:392, type:'goomba'},
-        {x:1520, y:392, type:'goomba'},
-        {x:1600, y:392, type:'goomba'},
-        {x:1900, y:392, type:'goomba'},
-        {x:2040, y:392, type:'goomba'},
-    ],
-    coins: [
-        {x:200, y:392},{x:640, y:392},{x:840, y:392},
-        {x:1120, y:230},{x:1500, y:392},{x:1580, y:392},
-        {x:1840, y:392},{x:2200, y:392},{x:2260, y:392},
-    ],
-    flag: {x:2440, y:340, height:80}
-};
-
-const LV12_WIDTH = 1900;
-const stage12 = {
-    name: '1-2', theme:'overworld', bgColor1:'#5C94FC', bgColor2:'#8fb8ff',
-    levelWidth: LV12_WIDTH,
-    platforms: [
-        ...groundWithGaps(LV12_WIDTH, [[560,648],[1180,1276]]),
-        {x:120, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:152, y:296, w:32, h:32, type:'brick'},
-        {x:184, y:296, w:32, h:32, type:'question', item:'mushroom'},
-        {x:280, y:236, w:80, h:20, type:'platform'},
-        {x:420, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
-        {x:490, y:GROUND_Y-96, w:56, h:96, type:'pipe'},
-        {x:720, y:296, w:32, h:32, type:'brick'},
-        {x:752, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:784, y:296, w:32, h:32, type:'brick'},
-        {x:880, y:230, w:64, h:20, type:'platform'},
-        {x:1000, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
-        {x:1340, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:1372, y:296, w:32, h:32, type:'brick'},
-        ...staircase(1500, 3, 1, 'gnd'),
-        ...staircase(1596, 3, -1, 'gnd'),
-        {x:1692, y:GROUND_Y, w:208, h:60, type:'ground'},
-    ],
-    enemies: [
-        {x:230, y:392, type:'goomba'},{x:340, y:392, type:'goomba'},
-        {x:700, y:392, type:'goomba'},{x:820, y:392, type:'goomba'},
-        {x:1080, y:392, type:'goomba'},{x:1200, y:392, type:'goomba'},
-        {x:1420, y:392, type:'goomba'},
-    ],
-    coins: [
-        {x:300, y:392},{x:340, y:210},{x:900, y:392},
-        {x:920, y:200},{x:1420, y:392},{x:1750, y:392},
-    ],
-    flag: {x:1830, y:340, height:80}
-};
-
-const stage13 = {
-    name: '1-3', theme:'overworld', bgColor1:'#5C94FC', bgColor2:'#8fb8ff',
-    levelWidth: 1550,
-    platforms: [
-        ...groundWithGaps(1550, [[420,520],[900,1000]]),
-        {x:100, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:200, y:340, w:80, h:20, type:'platform'},
-        {x:340, y:260, w:64, h:20, type:'platform'},
-        {x:600, y:296, w:32, h:32, type:'brick'},
-        {x:632, y:296, w:32, h:32, type:'question', item:'mushroom'},
-        {x:664, y:296, w:32, h:32, type:'brick'},
-        {x:740, y:240, w:80, h:20, type:'platform'},
-        {x:1060, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:1092, y:296, w:32, h:32, type:'brick'},
-        {x:1160, y:340, w:96, h:20, type:'platform'},
-        ...staircase(1300, 4, 1, 'gnd'),
-    ],
-    enemies: [
-        {x:120, y:392, type:'goomba'},{x:640, y:392, type:'goomba'},
-        {x:760, y:392, type:'goomba'},{x:1030, y:392, type:'goomba'},
-        {x:1150, y:392, type:'goomba'},
-    ],
-    coins: [
-        {x:230, y:310},{x:370, y:230},{x:770, y:210},{x:1190, y:310},
-    ],
-    flag: {x:1480, y:250, height:170}
-};
-
-const stage21 = {
-    name: '2-1', theme:'underground', bgColor1:'#0a0a1a', bgColor2:'#1a1a3a',
-    levelWidth: 1700,
-    platforms: [
-        ...groundWithGaps(1700, [[640,720]], 'ground_u'),
-        {x:80, y:296, w:32, h:32, type:'brick_u'},
-        {x:112, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:144, y:296, w:32, h:32, type:'brick_u'},
-        {x:280, y:340, w:96, h:20, type:'platform_u'},
-        {x:440, y:296, w:32, h:32, type:'question', item:'mushroom'},
-        {x:472, y:296, w:32, h:32, type:'brick_u'},
-        {x:800, y:260, w:80, h:20, type:'platform_u'},
-        {x:960, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:992, y:296, w:32, h:32, type:'brick_u'},
-        {x:1024, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:1200, y:340, w:120, h:20, type:'platform_u'},
-        {x:1400, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
-    ],
-    enemies: [
-        {x:160, y:392, type:'goomba'},{x:500, y:392, type:'goomba'},
-        {x:820, y:232, type:'goomba'},{x:1060, y:392, type:'goomba'},
-        {x:1250, y:392, type:'goomba'},
-    ],
-    coins: [
-        {x:180, y:392},{x:520, y:392},{x:1080, y:392},{x:1580, y:392},
-    ],
-    flag: {x:1620, y:340, height:80}
-};
-
-const stage22 = {
-    name: '2-2', theme:'castle', bgColor1:'#1a0a0a', bgColor2:'#3a1414',
-    levelWidth: 1750,
-    platforms: [
-        ...groundWithGaps(1750, [[500,580],[1100,1190]], 'ground_c'),
-        {x:100, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:132, y:296, w:32, h:32, type:'brick_c'},
-        {x:250, y:250, w:80, h:20, type:'platform_c'},
-        {x:660, y:296, w:32, h:32, type:'brick_c'},
-        {x:692, y:296, w:32, h:32, type:'question', item:'mushroom'},
-        {x:724, y:296, w:32, h:32, type:'brick_c'},
-        {x:850, y:230, w:64, h:20, type:'platform_c'},
-        ...staircase(1250, 5, 1, 'castle'),
-        ...staircase(1410, 5, -1, 'castle'),
-        {x:1570, y:GROUND_Y, w:180, h:60, type:'ground_c'},
-    ],
-    enemies: [
-        {x:180, y:392, type:'goomba'},{x:700, y:392, type:'goomba'},
-        {x:780, y:392, type:'goomba'},{x:1300, y:392, type:'goomba'},
-    ],
-    coins: [
-        {x:280, y:210},{x:900, y:190},{x:1660, y:392},
-    ],
-    flag: {x:1690, y:340, height:80}
-};
-
-const stage31 = {
-    name: '3-1', theme:'sunset', bgColor1:'#e0703a', bgColor2:'#ffb85a',
-    levelWidth: 2000,
-    platforms: [
-        ...groundWithGaps(2000, [[440,540],[1000,1120]]),
-        {x:100, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:132, y:296, w:32, h:32, type:'brick'},
-        {x:220, y:340, w:80, h:20, type:'platform'},
-        {x:600, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
-        {x:680, y:GROUND_Y-96, w:56, h:96, type:'pipe'},
-        {x:760, y:GROUND_Y-128, w:56, h:128, type:'pipe'},
-        {x:1200, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:1232, y:296, w:32, h:32, type:'brick'},
-        {x:1264, y:296, w:32, h:32, type:'question', item:'mushroom'},
-        {x:1400, y:250, w:96, h:20, type:'platform'},
-        ...staircase(1600, 5, 1, 'gnd'),
-        ...staircase(1760, 5, -1, 'gnd'),
-        {x:1920, y:GROUND_Y, w:80, h:60, type:'ground'},
-    ],
-    enemies: [
-        {x:160, y:392, type:'goomba'},{x:300, y:392, type:'goomba'},
-        {x:580, y:392, type:'goomba'},{x:900, y:392, type:'goomba'},
-        {x:980, y:392, type:'goomba'},{x:1300, y:392, type:'goomba'},
-        {x:1550, y:392, type:'goomba'},
-    ],
-    coins: [
-        {x:260, y:310},{x:1450, y:210},{x:1870, y:392},
-    ],
-    flag: {x:1900, y:250, height:170}
-};
-
-const STAGES = [stage11, stage12, stage13, stage21, stage22, stage31];
-
-// ============================================================
-//  GAME STATE
-// ============================================================
-let currentStageIndex = 0;
-let player = {};
-let enemies = [];
-let coins = [];
-let platforms = [];
-let items = []; // jamur power-up yang sedang aktif
-let flag = {};
-let camera = {x: 0};
 let gameOver = false;
-let winScreen = false;
-let frameCount = 0;
-let deathTimer = 0;
-let stageTransition = 0;
-let particles = [];
-let hills = [], bushes = [];
+let paused = false;
 
-const SMALL_H = 32, BIG_H = 48, PLAYER_W = 26;
+let speed = 130;
+let timer;
 
-function buildScenery(levelWidth) {
-    hills = []; bushes = [];
-    const n = Math.ceil(levelWidth / 380) + 2;
-    for (let i = 0; i < n; i++) hills.push({x: i * 380 + 60, r: 70 + (i % 2) * 25});
-    const m = Math.ceil(levelWidth / 220) + 2;
-    for (let i = 0; i < m; i++) bushes.push({x: i * 220 + 40, scale: 0.8 + (i % 3) * 0.3});
-}
+highEl.textContent = highScore;
 
-function loadStage(index) {
-    const stage = STAGES[index];
-    platforms = stage.platforms.map(p => ({...p, used: false, bump: 0}));
-    enemies = stage.enemies.map(e => ({
-        ...e, alive: true, squish: 0,
-        vx: (Math.random() > 0.5 ? 1 : -1) * (0.7 + Math.random() * 0.5),
-        vy: 0, onGround: false, walkPhase: Math.random()*10
-    }));
-    coins = stage.coins.map(c => ({...c, collected: false}));
-    items = [];
-    flag = {...stage.flag};
-    buildScenery(stage.levelWidth);
 
-    const keepSize = player.size || 'small';
-    player = {
-        x: 40, y: GROUND_Y - (keepSize==='big'?BIG_H:SMALL_H), w: PLAYER_W,
-        h: keepSize==='big'?BIG_H:SMALL_H, size: keepSize,
-        vx: 0, vy: 0, onGround: false,
-        facing: 1, walkPhase: 0, legLift:0, invincible: 0, dead: false,
-        flagSliding: false, walkingToCastle: false, coyote: 0, jumpBuffer: 0,
-        growAnim: 0, skid: false,
-        score: player.score || 0, coins: player.coins || 0, lives: player.lives || 3
+/* =========================
+   START GAME
+========================= */
+
+function startGame() {
+
+    snake = [
+        {x: 10, y: 10},
+        {x: 9, y: 10},
+        {x: 8, y: 10}
+    ];
+
+    direction = {
+        x: 1,
+        y: 0
     };
 
-    camera.x = 0;
-    gameOver = false; winScreen = false; deathTimer = 0; stageTransition = 0;
-    particles = [];
-    document.getElementById('stageDisplay').textContent = stage.name;
-    updateUI();
+    nextDirection = {
+        x: 1,
+        y: 0
+    };
+
+    score = 0;
+    speed = 130;
+
+    gameOver = false;
+    paused = false;
+
+    scoreEl.textContent = score;
+
+    createFood();
+
+    clearInterval(timer);
+    timer = setInterval(gameLoop, speed);
+
+    draw();
 }
 
-function resetGame() {
-    currentStageIndex = 0;
-    player = {lives: 3, coins: 0, score: 0, size:'small'};
-    loadStage(currentStageIndex);
+
+/* =========================
+   FOOD
+========================= */
+
+function createFood() {
+
+    do {
+
+        food = {
+            x: Math.floor(Math.random() * GRID),
+            y: Math.floor(Math.random() * GRID)
+        };
+
+    } while (
+        snake.some(part =>
+            part.x === food.x &&
+            part.y === food.y
+        )
+    );
 }
 
-function updateUI() {
-    document.getElementById('livesDisplay').textContent = player.lives || 0;
-    document.getElementById('coinDisplay').textContent = player.coins || 0;
-    document.getElementById('scoreDisplay').textContent = player.score || 0;
-    document.getElementById('powerDisplay').textContent = player.size === 'big' ? '⭐ Super Mario' : '';
-}
 
-function addParticles(x, y, color, count = 8) {
-    for (let i = 0; i < count; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const speed = 1 + Math.random() * 3;
-        particles.push({
-            x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 1,
-            life: 30 + Math.random() * 20, maxLife: 50, size: 3 + Math.random() * 4, color
-        });
-    }
-}
+/* =========================
+   GAME LOOP
+========================= */
 
-function updateParticles() {
-    for (let i = particles.length - 1; i >= 0; i--) {
-        const p = particles[i];
-        p.x += p.vx; p.y += p.vy; p.vy += 0.1; p.life--;
-        if (p.life <= 0) particles.splice(i, 1);
-    }
-}
+function gameLoop() {
 
-function updateCamera() {
-    const stage = STAGES[currentStageIndex];
-    const maxCam = Math.max(0, stage.levelWidth - W);
-    let targetCam = player.x - 400;
-    if (targetCam < 0) targetCam = 0;
-    if (targetCam > maxCam) targetCam = maxCam;
-    camera.x += (targetCam - camera.x) * 0.14;
-}
-
-function growPlayer() {
-    if (player.size === 'big') { player.score += 200; updateUI(); return; }
-    const oldH = player.h;
-    player.size = 'big';
-    player.h = BIG_H;
-    player.y -= (BIG_H - oldH);
-    player.growAnim = 20;
-    player.invincible = 40;
-    player.score += 1000;
-    updateUI();
-    addParticles(player.x + player.w/2, player.y + player.h/2, '#ffe680', 16);
-}
-
-function shrinkPlayer() {
-    const oldH = player.h;
-    player.size = 'small';
-    player.h = SMALL_H;
-    player.y += (oldH - SMALL_H);
-    player.invincible = 90;
-    updateUI();
-}
-
-// ============================================================
-//  UPDATE
-// ============================================================
-function update() {
-    frameCount++;
-    if (gameOver) { if (keys['r']) resetGame(); return; }
-
-    if (winScreen) {
-        stageTransition++;
-        if (stageTransition > 90) {
-            currentStageIndex++;
-            if (currentStageIndex >= STAGES.length) {
-                player.score += 10000; updateUI();
-                setTimeout(() => resetGame(), 3000);
-                return;
-            }
-            loadStage(currentStageIndex);
-        }
+    if (gameOver || paused) {
+        draw();
         return;
     }
 
-    if (player.dead) {
-        deathTimer++;
-        if (deathTimer > 60) {
-            if (player.lives > 0) { player.lives--; player.size='small'; updateUI(); loadStage(currentStageIndex); }
-            else gameOver = true;
-        }
+    direction = nextDirection;
+
+    const head = {
+        x: snake[0].x + direction.x,
+        y: snake[0].y + direction.y
+    };
+
+
+    /* WALL COLLISION */
+
+    if (
+        head.x < 0 ||
+        head.x >= GRID ||
+        head.y < 0 ||
+        head.y >= GRID
+    ) {
+        endGame();
         return;
     }
 
-    if (player.flagSliding) {
-        player.y += 3.4;
-        player.x = flag.x - player.w / 2;
-        const bottom = GROUND_Y - player.h;
-        if (player.y >= bottom) {
-            player.y = bottom; player.flagSliding = false;
-            player.walkingToCastle = true; player.walkTimer = 40;
-        }
-        updateParticles();
+
+    /* SELF COLLISION */
+
+    if (
+        snake.some(part =>
+            part.x === head.x &&
+            part.y === head.y
+        )
+    ) {
+        endGame();
         return;
     }
 
-    if (player.walkingToCastle) {
-        player.walkTimer--; player.x += 2.2;
-        player.walkPhase += 0.35;
-        updateCamera(); updateParticles();
-        if (player.walkTimer <= 0) {
-            player.walkingToCastle = false; winScreen = true;
-            player.score += 2000; updateUI();
+
+    snake.unshift(head);
+
+
+    /* EAT FOOD */
+
+    if (
+        head.x === food.x &&
+        head.y === food.y
+    ) {
+
+        score++;
+
+        scoreEl.textContent = score;
+
+        if (score > highScore) {
+
+            highScore = score;
+
+            localStorage.setItem(
+                "snakeHighScore",
+                highScore
+            );
+
+            highEl.textContent = highScore;
         }
-        return;
-    }
 
-    const running = keys['shift'];
-    let moveX = 0;
-    if (keys['arrowleft']) moveX = -1;
-    if (keys['arrowright']) moveX = 1;
+        createFood();
 
-    const accel = running ? RUN_ACCEL : ACCEL;
-    const maxSpeed = running ? MAX_RUN_SPEED : MAX_WALK_SPEED;
+        /*
+        Semakin tinggi score,
+        semakin cepat ular.
+        */
 
-    // deteksi skid: berbalik arah cepat saat di darat
-    player.skid = player.onGround && moveX !== 0 && player.vx !== 0 &&
-                  Math.sign(moveX) !== Math.sign(player.vx) && Math.abs(player.vx) > 1.5;
+        if (speed > 55) {
 
-    if (moveX !== 0) {
-        player.vx += moveX * accel;
-        if (Math.abs(player.vx) > maxSpeed) player.vx = moveX * maxSpeed;
-        player.facing = moveX;
+            speed -= 3;
+
+            clearInterval(timer);
+
+            timer = setInterval(
+                gameLoop,
+                speed
+            );
+        }
+
     } else {
-        player.vx *= player.onGround ? FRICTION_GROUND : FRICTION_AIR;
-        if (Math.abs(player.vx) < 0.08) player.vx = 0;
+
+        snake.pop();
+
     }
 
-    // gerak kaki halus & terus menerus (bukan loncat 2 frame)
-    if (player.onGround && Math.abs(player.vx) > 0.2) {
-        player.walkPhase += Math.min(Math.abs(player.vx) * 0.11 + 0.08, 0.9);
-    }
-
-    // coyote time + jump buffer -> lompatan terasa lebih responsif & tidak kaku
-    if (player.onGround) player.coyote = COYOTE_FRAMES; else if (player.coyote > 0) player.coyote--;
-    if (keys['z'] || keys['arrowup']) player.jumpBuffer = JUMP_BUFFER_FRAMES; else if (player.jumpBuffer > 0) player.jumpBuffer--;
-
-    if (player.jumpBuffer > 0 && player.coyote > 0) {
-        let jf = JUMP_FORCE;
-        if (Math.abs(player.vx) > MAX_WALK_SPEED * 0.9) jf += RUN_JUMP_BONUS;
-        player.vy = jf; player.onGround = false; player.coyote = 0; player.jumpBuffer = 0;
-        addParticles(player.x + player.w/2, player.y + player.h, '#ffffff', 4);
-    }
-    if (!keys['z'] && !keys['arrowup'] && player.vy < -2) player.vy *= 0.86;
-
-    player.vy += GRAVITY;
-    if (player.vy > MAX_FALL_SPEED) player.vy = MAX_FALL_SPEED;
-
-    player.x += player.vx;
-    for (const p of platforms) {
-        if (rectCollide(player, p)) {
-            if (player.vx > 0) player.x = p.x - player.w;
-            else if (player.vx < 0) player.x = p.x + p.w;
-            player.vx = 0;
-        }
-    }
-
-    player.y += player.vy;
-    const wasOnGround = player.onGround;
-    player.onGround = false;
-
-    for (const p of platforms) {
-        if (rectCollide(player, p)) {
-            if (player.vy > 0) {
-                player.y = p.y - player.h; player.vy = 0; player.onGround = true;
-                if (!wasOnGround) addParticles(player.x+player.w/2, player.y+player.h, 'rgba(255,255,255,0.5)', 3);
-            } else if (player.vy < 0) {
-                player.y = p.y + p.h; player.vy = 0;
-                hitBlockFromBelow(p);
-            }
-        }
-    }
-
-    for (const c of coins) {
-        if (!c.collected) {
-            const dx = player.x + player.w/2 - c.x;
-            const dy = player.y + player.h/2 - c.y;
-            if (Math.hypot(dx, dy) < 22) {
-                c.collected = true; player.coins++; player.score += 100; updateUI();
-                addParticles(c.x, c.y, '#ffd700', 10);
-            }
-        }
-    }
-
-    for (const p of platforms) {
-        if (p.bump) { p.bump *= 0.7; if (Math.abs(p.bump) < 0.3) p.bump = 0; }
-    }
-
-    updateItems();
-    updateEnemies();
-
-    if (!player.dead && !player.flagSliding) {
-        const dx = player.x + player.w/2 - flag.x;
-        const dy = player.y + player.h - flag.y;
-        if (Math.abs(dx) < 24 && dy > -10 && dy < flag.height + 20) {
-            player.flagSliding = true; player.vx = 0; player.vy = 0;
-            addParticles(flag.x, flag.y, '#ffd700', 16);
-        }
-    }
-
-    if (player.y > H + 80) { player.dead = true; player.lives--; updateUI(); deathTimer = 0; }
-
-    updateCamera();
-    if (player.invincible > 0) player.invincible--;
-    if (player.growAnim > 0) player.growAnim--;
-    updateParticles();
+    draw();
 }
 
-function hitBlockFromBelow(p) {
-    if (p.type === 'question' && p.item && !p.used) {
-        p.used = true; p.bump = 8;
-        if (p.item === 'coin') {
-            player.coins++; player.score += 200; updateUI();
-            addParticles(p.x + p.w/2, p.y, '#f0c040', 12);
-        } else if (p.item === 'mushroom') {
-            spawnMushroom(p);
-            addParticles(p.x + p.w/2, p.y, '#f0c040', 8);
-        }
-    } else if (p.type.startsWith('brick')) {
-        p.bump = 6;
-        addParticles(p.x + p.w/2, p.y + p.h/2, PAL.brick, 6);
-    }
-}
 
-function spawnMushroom(block) {
-    items.push({
-        type: 'mushroom', x: block.x + block.w/2 - 12, y: block.y - 4,
-        targetY: block.y - 34, w: 24, h: 24, vx: 0, vy: 0,
-        state: 'rising'
-    });
-}
+/* =========================
+   DRAW
+========================= */
 
-function updateItems() {
-    for (let i = items.length - 1; i >= 0; i--) {
-        const it = items[i];
-        if (it.state === 'rising') {
-            it.y -= 1.1;
-            if (it.y <= it.targetY) { it.y = it.targetY; it.state = 'active'; it.vx = 1.6; }
-        } else {
-            it.vy += GRAVITY * 0.7;
-            it.x += it.vx;
-            for (const p of platforms) {
-                if (rectCollide(it, p)) {
-                    if (it.vx > 0) { it.x = p.x - it.w; it.vx *= -1; }
-                    else if (it.vx < 0) { it.x = p.x + p.w; it.vx *= -1; }
-                }
-            }
-            it.y += it.vy;
-            for (const p of platforms) {
-                if (rectCollide(it, p)) {
-                    if (it.vy > 0) { it.y = p.y - it.h; it.vy = 0; }
-                    else if (it.vy < 0) { it.y = p.y + p.h; it.vy = 0; }
-                }
-            }
-            if (it.y > H + 80) { items.splice(i,1); continue; }
-            if (!player.dead && rectCollide(player, it)) {
-                growPlayer();
-                items.splice(i,1);
-            }
-        }
-    }
-}
-
-function updateEnemies() {
-    for (const e of enemies) {
-        if (!e.alive) continue;
-        if (e.squish > 0) { e.squish--; if (e.squish <= 0) e.alive = false; continue; }
-
-        e.walkPhase += 0.14;
-        e.x += e.vx;
-        e.vy += GRAVITY;
-        e.y += e.vy;
-        e.onGround = false;
-
-        for (const p of platforms) {
-            if (rectCollide(e, p)) {
-                if (e.vy > 0) { e.y = p.y - e.h; e.vy = 0; e.onGround = true; }
-                else if (e.vy < 0) { e.y = p.y + p.h; e.vy = 0; }
-                if (e.vx > 0 && e.x + e.w > p.x && e.x < p.x) { e.x = p.x - e.w; e.vx *= -1; }
-                else if (e.vx < 0 && e.x < p.x + p.w && e.x + e.w > p.x + p.w) { e.x = p.x + p.w; e.vx *= -1; }
-            }
-        }
-
-        if (e.y > H + 80) { e.alive = false; continue; }
-
-        if (!player.invincible && !player.dead && rectCollide(player, e)) {
-            if (player.vy > 0 && player.y + player.h - e.y < 30) {
-                e.squish = 14; e.vx = 0;
-                player.vy = -8; player.score += 500; updateUI();
-                addParticles(e.x + e.w/2, e.y + e.h/2, PAL.goombaDark, 12);
-            } else if (player.size === 'big') {
-                shrinkPlayer();
-                addParticles(player.x + player.w/2, player.y + player.h/2, '#ff5050', 10);
-            } else {
-                player.dead = true; player.vy = -8; deathTimer = 0;
-                player.lives--; updateUI();
-            }
-        }
-    }
-}
-
-// ============================================================
-//  DRAW HELPERS - SPRITES (kurva halus, shading berlapis)
-// ============================================================
-function roundRect(x,y,w,h,r){
-    ctx.beginPath();
-    ctx.moveTo(x+r,y);
-    ctx.arcTo(x+w,y,x+w,y+h,r);
-    ctx.arcTo(x+w,y+h,x,y+h,r);
-    ctx.arcTo(x,y+h,x,y,r);
-    ctx.arcTo(x,y,x+w,y,r);
-    ctx.closePath();
-}
-
-function drawMario(dx, dy, w, h, facing, legPhase, onGround, jumping, skid, big, growAnim) {
-    ctx.save();
-    const scaleBoost = growAnim ? 1 + Math.sin(growAnim*0.9)*0.06 : 1;
-    ctx.translate(dx + w/2, dy + h/2);
-    ctx.scale((facing < 0 ? -1 : 1) * (w/26) * scaleBoost, (h/32) * scaleBoost);
-
-    const legSwing = jumping ? 0 : (onGround ? Math.sin(legPhase) * 5 : 0);
-    const armUp = jumping;
-    const bodyH = big ? 15 + 12 : 15; // sedikit lebih panjang saat besar (skala sudah menangani sisanya)
-
-    // sepatu
-    ctx.fillStyle = PAL.hairDark;
-    if (jumping) { roundRect(-9.5,11,9,7,2); ctx.fill(); roundRect(1.5,11,9,7,2); ctx.fill(); }
-    else if (skid) { roundRect(-11,11,20,7,2); ctx.fill(); }
-    else {
-        roundRect(-10+legSwing*0.6, 11, 9, 7, 2); ctx.fill();
-        roundRect(1-legSwing*0.6, 11, 9, 7, 2); ctx.fill();
-    }
-
-    // celana overall (kaki + badan)
-    ctx.fillStyle = PAL.marioBlue;
-    if (jumping) { roundRect(-8,-2,7,14,2); ctx.fill(); roundRect(1,-2,7,14,2); ctx.fill(); }
-    else if (skid) { roundRect(-9,-2,18,14,2); ctx.fill(); }
-    else {
-        roundRect(-9+legSwing*0.5, -2, 7, 14, 2); ctx.fill();
-        roundRect(2-legSwing*0.5, -2, 7, 14, 2); ctx.fill();
-    }
-    roundRect(-9, -5, 18, 10, 3); ctx.fill();
-
-    // bayangan sisi badan
-    ctx.fillStyle = PAL.marioBlueDark;
-    roundRect(-9,-5,4,10,2); ctx.fill();
-
-    // kancing kuning
-    ctx.fillStyle = PAL.buttonYellow;
-    ctx.beginPath(); ctx.arc(-5,-4,1.7,0,7); ctx.fill();
-    ctx.beginPath(); ctx.arc(4,-4,1.7,0,7); ctx.fill();
-
-    // lengan baju (mengayun berlawanan arah kaki)
-    const armSwing = jumping ? 0 : Math.sin(legPhase + Math.PI) * 3;
-    ctx.fillStyle = PAL.marioRed;
-    if (armUp) { roundRect(-14,-15,6,11,2); ctx.fill(); roundRect(8,-4,6,9,2); ctx.fill(); }
-    else { roundRect(-13, -4+armSwing*0.4, 6, 9, 2); ctx.fill(); roundRect(7, -4-armSwing*0.4, 6, 9, 2); ctx.fill(); }
-
-    // sarung tangan putih
-    ctx.fillStyle = PAL.white;
-    if (armUp) { ctx.beginPath(); ctx.arc(-11,-18,3.4,0,7); ctx.fill(); }
-    else {
-        ctx.beginPath(); ctx.arc(-11, 4+armSwing*0.4, 3.2, 0, 7); ctx.fill();
-        ctx.beginPath(); ctx.arc(11, 4-armSwing*0.4, 3.2, 0, 7); ctx.fill();
-    }
-
-    // dada kemeja merah
-    ctx.fillStyle = PAL.marioRed;
-    roundRect(-9, -9, 18, 5, 2); ctx.fill();
-
-    // wajah
-    ctx.fillStyle = PAL.skin;
-    roundRect(-8, -21, 17, 13, 4); ctx.fill();
-    ctx.fillStyle = PAL.skinShade;
-    roundRect(-8, -12, 17, 3, 2); ctx.fill();
-
-    // rambut samping / cambang
-    ctx.fillStyle = PAL.hair;
-    roundRect(-9, -17, 4, 8, 2); ctx.fill();
-    // kumis
-    ctx.fillStyle = PAL.hairDark;
-    roundRect(-3, -12, 12, 3, 1); ctx.fill();
-    roundRect(-4, -14, 5, 3, 1); ctx.fill();
-    // hidung
-    ctx.fillStyle = PAL.skin;
-    ctx.beginPath(); ctx.ellipse(9,-13,4,3.4,0,0,7); ctx.fill();
-    // mata
-    ctx.fillStyle = '#1a1a1a';
-    ctx.beginPath(); ctx.arc(2,-17,1.8,0,7); ctx.fill();
-
-    // topi
-    ctx.fillStyle = PAL.marioRed;
-    roundRect(-9, -25, 18, 5, 2); ctx.fill();
-    roundRect(-9, -21, 23, 4, 3); ctx.fill();
-    ctx.fillStyle = PAL.marioRedDark;
-    ctx.beginPath(); ctx.arc(2,-21,4.2,0,7); ctx.fill();
-    ctx.fillStyle = PAL.white;
-    ctx.font = 'bold 6px monospace'; ctx.textAlign='center';
-    ctx.fillText('M', 1, -19);
-
-    ctx.restore();
-}
-
-function drawGoomba(dx, dy, w, h, phase, squish) {
-    ctx.save();
-    ctx.translate(dx + w/2, dy + h/2);
-    const sq = squish > 0 ? squish / 14 : 0;
-    ctx.scale(1 + sq * 0.5, 1 - sq * 0.7);
-    ctx.translate(0, h/2 * sq * 0.6);
-
-    // badan bulat dengan bayangan bawah untuk kesan 3D
-    ctx.fillStyle = PAL.goombaDark;
-    ctx.beginPath(); ctx.ellipse(0, h*0.12, w/2, h/2 * 0.62, 0, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = PAL.goomba;
-    ctx.beginPath();
-    ctx.moveTo(-w/2, 0);
-    ctx.quadraticCurveTo(-w/2, -h/2, 0, -h/2);
-    ctx.quadraticCurveTo(w/2, -h/2, w/2, 0);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = PAL.goombaBelly;
-    ctx.beginPath(); ctx.ellipse(0, -h*0.05, w/2-4, h/2-8, 0, 0, Math.PI*2); ctx.fill();
-
-    if (squish <= 0) {
-        const footShift = Math.sin(phase) * 2.5;
-        ctx.fillStyle = PAL.goombaFoot;
-        roundRect(-w/2 + 1 + footShift, h/2 - 6, w/2 - 3, 6, 2); ctx.fill();
-        roundRect(1 - footShift, h/2 - 6, w/2 - 3, 6, 2); ctx.fill();
-
-        // alis marah khas goomba
-        ctx.strokeStyle = '#2a1608'; ctx.lineWidth = 2.2; ctx.lineCap='round';
-        ctx.beginPath(); ctx.moveTo(-w/2+3,-h/2+9); ctx.lineTo(-1,-h/2+13); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(w/2-3,-h/2+9); ctx.lineTo(1,-h/2+13); ctx.stroke();
-        ctx.fillStyle = '#fff';
-        ctx.beginPath(); ctx.ellipse(-w/2+8,-h/2+16,4,4.4,0,0,7); ctx.fill();
-        ctx.beginPath(); ctx.ellipse(w/2-8,-h/2+16,4,4.4,0,0,7); ctx.fill();
-        ctx.fillStyle = '#1a1a1a';
-        ctx.beginPath(); ctx.arc(-w/2+9,-h/2+17,2,0,7); ctx.fill();
-        ctx.beginPath(); ctx.arc(w/2-9,-h/2+17,2,0,7); ctx.fill();
-    } else {
-        ctx.strokeStyle = '#2a1608'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(-w/2+5,-2); ctx.lineTo(-w/2+11,4); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(-w/2+11,-2); ctx.lineTo(-w/2+5,4); ctx.stroke();
-    }
-    ctx.restore();
-}
-
-function drawMushroom(dx, dy, w, h) {
-    ctx.save();
-    ctx.translate(dx + w/2, dy + h/2);
-    ctx.fillStyle = PAL.mushStemShade;
-    roundRect(-w/2+4, h/2-10, w-8, 10, 3); ctx.fill();
-    ctx.fillStyle = PAL.mushStem;
-    roundRect(-w/2+5, h/2-10, w-10, 8, 3); ctx.fill();
-    ctx.fillStyle = PAL.mushCapDark;
-    ctx.beginPath(); ctx.arc(0, -h*0.05, w/2, Math.PI, 0); ctx.fill();
-    ctx.fillStyle = PAL.mushCap;
-    ctx.beginPath(); ctx.ellipse(0, -h*0.08, w/2-2, h/2-3, 0, Math.PI, 0); ctx.fill();
-    ctx.fillStyle = PAL.mushSpot;
-    ctx.beginPath(); ctx.ellipse(-w*0.22,-h*0.28,3.4,3,0,0,7); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(w*0.22,-h*0.28,3.4,3,0,0,7); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(0,-h*0.42,3,2.6,0,0,7); ctx.fill();
-    ctx.restore();
-}
-
-function drawCastle(dx) {
-    ctx.fillStyle = PAL.castleGray;
-    ctx.fillRect(dx, GROUND_Y - 100, 130, 100);
-    ctx.fillStyle = PAL.castleDark;
-    for (let i=0;i<5;i++) ctx.fillRect(dx + i*28 - 4, GROUND_Y - 112, 14, 14);
-    ctx.fillStyle = '#1a1a1a';
-    ctx.fillRect(dx + 50, GROUND_Y - 46, 24, 46);
-    ctx.fillStyle = '#3a2a1a';
-    ctx.beginPath(); ctx.arc(dx + 62, GROUND_Y - 46, 12, Math.PI, 0); ctx.fill();
-    ctx.fillStyle = PAL.castleDark;
-    ctx.fillRect(dx+20, GROUND_Y-70, 10, 10);
-    ctx.fillRect(dx+96, GROUND_Y-70, 10, 10);
-}
-
-// ============================================================
-//  DRAW
-// ============================================================
 function draw() {
-    ctx.clearRect(0, 0, W, H);
-    const stage = STAGES[currentStageIndex];
 
-    let grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, stage.bgColor1); grad.addColorStop(1, stage.bgColor2);
-    ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#a9b77a";
+    ctx.fillRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
 
-    const underground = stage.theme === 'underground';
-    const castle = stage.theme === 'castle';
 
-    if (!underground && !castle) {
-        const cloudPositions = [
-            {x:100, y:50, s:1.5}, {x:350, y:30, s:1.0}, {x:600, y:60, s:1.8},
-            {x:850, y:40, s:1.2}, {x:1100, y:55, s:1.4}, {x:1350, y:35, s:1.1},
-            {x:1650, y:45, s:1.3}, {x:1950, y:35, s:1.0}, {x:2250, y:55, s:1.5},
-        ];
-        for (const c of cloudPositions) {
-            const cx = c.x - camera.x * 0.4;
-            if (cx < -150 || cx > W + 150) continue;
-            ctx.fillStyle = '#FCFCFC';
-            ctx.beginPath();
-            ctx.arc(cx - 30*c.s, c.y, 25*c.s, 0, Math.PI*2);
-            ctx.arc(cx, c.y - 15*c.s, 30*c.s, 0, Math.PI*2);
-            ctx.arc(cx + 30*c.s, c.y, 25*c.s, 0, Math.PI*2);
-            ctx.fill();
-        }
-        ctx.fillStyle = 'rgba(0,168,0,0.35)';
-        for (const hl of hills) {
-            const hx = hl.x - camera.x * 0.6;
-            if (hx < -120 || hx > W + 120) continue;
-            ctx.beginPath(); ctx.arc(hx, GROUND_Y + 10, hl.r, Math.PI, 0); ctx.fill();
-        }
-        ctx.fillStyle = '#00A800';
-        for (const b of bushes) {
-            const bx = b.x - camera.x * 0.85;
-            if (bx < -60 || bx > W + 60) continue;
-            const s = b.scale;
-            ctx.beginPath();
-            ctx.arc(bx, GROUND_Y - 6, 14*s, 0, Math.PI*2);
-            ctx.arc(bx + 16*s, GROUND_Y - 10, 16*s, 0, Math.PI*2);
-            ctx.arc(bx + 32*s, GROUND_Y - 6, 14*s, 0, Math.PI*2);
-            ctx.fill();
-        }
-    } else {
-        ctx.fillStyle = underground ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.25)';
-        const off = camera.x % 40;
-        for (let x = -off; x < W; x += 40) {
-            for (let y = 0; y < H; y += 40) {
-                ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-                ctx.strokeRect(x, y, 40, 40);
-            }
-        }
-    }
+    /* PIXEL GRID */
 
-    const drawX = (x) => x - camera.x;
+    ctx.strokeStyle =
+        "rgba(45,60,30,.08)";
 
-    for (const p of platforms) {
-        const dx = drawX(p.x);
-        if (dx < -140 || dx > W + 20) continue;
-        const by = p.y - (p.bump || 0);
+    ctx.lineWidth = 1;
 
-        if (p.type.startsWith('ground') || p.type.startsWith('stair')) {
-            const uType = p.type.includes('_u') ? 'u' : (p.type.includes('castle') ? 'c' : (p.type.includes('_c') ? 'c' : 'g'));
-            const top = uType==='u' ? '#3a3a6a' : (uType==='c' ? '#6a4a4a' : PAL.groundTop);
-            const body = uType==='u' ? '#26264a' : (uType==='c' ? '#4a2a2a' : PAL.groundBody);
-            ctx.fillStyle = top; ctx.fillRect(dx, p.y, p.w, Math.min(8,p.h));
-            ctx.fillStyle = body; ctx.fillRect(dx, p.y+8, p.w, Math.max(0,p.h-8));
-            ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = 1;
-            for (let i=0; i<p.w; i+=24) { ctx.strokeRect(dx+i, p.y+8, 24, 16); ctx.strokeRect(dx+i-12, p.y+24, 24, 16); }
-            if (uType==='g') {
-                ctx.fillStyle = '#4ec22e';
-                for (let i=0; i<p.w; i+=6) ctx.fillRect(dx+i, p.y-2, 2, 4);
-            } else if (uType==='c') {
-                ctx.fillStyle = '#a86a4a';
-                for (let i=0; i<p.w; i+=6) ctx.fillRect(dx+i, p.y-2, 2, 4);
-            }
-        } else if (p.type === 'brick' || p.type === 'brick_u' || p.type === 'brick_c') {
-            const c1 = p.type === 'brick' ? PAL.brick : (p.type === 'brick_u' ? '#4a4a8a' : '#8a4a3a');
-            const c2 = p.type === 'brick' ? PAL.brickDark : (p.type === 'brick_u' ? '#2a2a5a' : '#5a2a1a');
-            ctx.fillStyle = c1; ctx.fillRect(dx, by, p.w, p.h);
-            ctx.fillStyle = PAL.brickLight; ctx.fillRect(dx+2, by+2, p.w-4, 3);
-            ctx.strokeStyle = c2; ctx.lineWidth = 2; ctx.strokeRect(dx+1, by+1, p.w-2, p.h-2);
-            ctx.strokeStyle = c2; ctx.beginPath();
-            ctx.moveTo(dx+p.w/2, by); ctx.lineTo(dx+p.w/2, by+p.h/2);
-            ctx.moveTo(dx, by+p.h/2); ctx.lineTo(dx+p.w, by+p.h/2);
-            ctx.moveTo(dx+p.w/4, by+p.h/2); ctx.lineTo(dx+p.w/4, by+p.h);
-            ctx.moveTo(dx+3*p.w/4, by+p.h/2); ctx.lineTo(dx+3*p.w/4, by+p.h);
-            ctx.stroke();
-        } else if (p.type === 'question') {
-            const isActive = p.item && !p.used;
-            ctx.fillStyle = isActive ? PAL.block : '#8a8a8a';
-            ctx.fillRect(dx, by, p.w, p.h);
-            ctx.fillStyle = isActive ? PAL.blockLight : '#a8a8a8';
-            ctx.fillRect(dx+2, by+2, p.w-4, 3);
-            ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2;
-            ctx.strokeRect(dx+1, by+1, p.w-2, p.h-2);
-            ctx.fillStyle = isActive ? PAL.blockDark : '#5a5a5a';
-            ctx.fillRect(dx+3, by+3, 3, 3); ctx.fillRect(dx+p.w-6, by+3, 3, 3);
-            ctx.fillRect(dx+3, by+p.h-6, 3, 3); ctx.fillRect(dx+p.w-6, by+p.h-6, 3, 3);
-            if (isActive) {
-                const pulse = Math.sin(frameCount * 0.08) * 2;
-                ctx.fillStyle = '#fff';
-                ctx.font = 'bold 20px monospace'; ctx.textAlign = 'center';
-                ctx.fillText('?', dx+p.w/2, by+p.h/2+7+pulse/2);
-            }
-        } else if (p.type === 'platform' || p.type === 'platform_u' || p.type === 'platform_c') {
-            const c1 = p.type === 'platform' ? PAL.groundBody : (p.type === 'platform_u' ? '#4a4a7a' : '#7a4a4a');
-            ctx.fillStyle = c1; ctx.fillRect(dx, p.y, p.w, p.h);
-            ctx.fillStyle = 'rgba(0,0,0,0.25)';
-            ctx.fillRect(dx, p.y, p.w, 2); ctx.fillRect(dx, p.y+p.h-2, p.w, 2);
-        } else if (p.type === 'pipe') {
-            ctx.fillStyle = PAL.pipeDark;
-            ctx.fillRect(dx-3, p.y-10, p.w+6, 10);
-            ctx.fillRect(dx, p.y, p.w, p.h);
-            ctx.fillStyle = PAL.pipeBody;
-            ctx.fillRect(dx+2, p.y-8, p.w-6, 6);
-            ctx.fillRect(dx+3, p.y+3, p.w-16, p.h-6);
-            ctx.fillStyle = PAL.pipeLight;
-            ctx.fillRect(dx+4, p.y-7, 6, 4);
-            ctx.fillRect(dx+5, p.y+5, 4, p.h-10);
-        }
-    }
+    for (let i = 0; i <= GRID; i++) {
 
-    for (const c of coins) {
-        if (c.collected) continue;
-        const dx = drawX(c.x);
-        if (dx < -30 || dx > W+30) continue;
-        const scale = Math.abs(Math.sin(frameCount * 0.06 + c.x));
-        ctx.fillStyle = PAL.block;
-        ctx.beginPath(); ctx.ellipse(dx, c.y, 8*scale+2, 8, 0, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = '#ffe680';
-        ctx.beginPath(); ctx.ellipse(dx, c.y, 4*scale+1, 4, 0, 0, Math.PI*2); ctx.fill();
-    }
-
-    for (const it of items) {
-        const dx = drawX(it.x);
-        if (dx < -40 || dx > W+40) continue;
-        if (it.type === 'mushroom') drawMushroom(dx, it.y, it.w, it.h);
-    }
-
-    for (const e of enemies) {
-        if (!e.alive) continue;
-        const dx = drawX(e.x);
-        if (dx < -60 || dx > W+40) continue;
-        drawGoomba(dx, e.y, 28, 26, e.walkPhase, e.squish);
-    }
-
-    drawCastle(drawX(flag.x + 90));
-
-    const fdx = drawX(flag.x);
-    if (fdx > -40 && fdx < W+40) {
-        const poleTop = flag.y - 10;
-        ctx.fillStyle = '#9aa0a8';
-        ctx.fillRect(fdx, poleTop, 4, flag.height + 10);
-        ctx.fillStyle = '#ffd700';
-        ctx.beginPath(); ctx.arc(fdx+2, poleTop, 6, 0, Math.PI*2); ctx.fill();
-        let flagY = (winScreen || player.flagSliding || player.walkingToCastle) ? poleTop + 4 : flag.y;
-        const wave = Math.sin(frameCount*0.1)*3;
-        ctx.fillStyle = '#3fbf3f';
         ctx.beginPath();
-        ctx.moveTo(fdx+4, flagY-8);
-        ctx.quadraticCurveTo(fdx+24+wave, flagY+4, fdx+4, flagY+18);
-        ctx.fill();
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
-        ctx.fillText('M', fdx+13+wave/2, flagY+6);
-        ctx.fillStyle = '#6a6a6a';
-        ctx.fillRect(fdx-5, flag.y+flag.height-4, 14, 8);
+
+        ctx.moveTo(i * SIZE, 0);
+        ctx.lineTo(
+            i * SIZE,
+            canvas.height
+        );
+
+        ctx.stroke();
+
+        ctx.beginPath();
+
+        ctx.moveTo(0, i * SIZE);
+        ctx.lineTo(
+            canvas.width,
+            i * SIZE
+        );
+
+        ctx.stroke();
     }
 
-    if (!player.dead && player.invincible % 4 < 2) {
-        const dx = drawX(player.x);
-        const jumping = !player.onGround && !player.flagSliding && !player.walkingToCastle;
-        let facing = player.facing;
-        if (player.flagSliding) facing = -1;
-        drawMario(dx, player.y, player.w, player.h, facing, player.walkPhase, player.onGround || player.walkingToCastle, jumping, player.skid, player.size==='big', player.growAnim);
-    }
 
-    for (const p of particles) {
-        const alpha = p.life / p.maxLife;
-        ctx.globalAlpha = alpha; ctx.fillStyle = p.color;
-        ctx.fillRect(p.x - camera.x, p.y, p.size, p.size);
-    }
-    ctx.globalAlpha = 1;
+    /* FOOD */
 
-    // HUD
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(10, 10, 160, 30); ctx.fillRect(180, 10, 120, 30);
-    ctx.fillRect(310, 10, 200, 30); ctx.fillRect(W-100, 10, 90, 30);
-    ctx.fillStyle = '#ff6b6b'; ctx.font = '20px monospace'; ctx.textAlign = 'left';
-    ctx.fillText(`❤️ x${player.lives}`, 18, 33);
-    ctx.fillStyle = '#ffd700'; ctx.fillText(`🪙 ${player.coins}`, 188, 33);
-    ctx.fillStyle = '#fff'; ctx.fillText(`🏆 ${player.score}`, 318, 33);
-    ctx.fillStyle = '#4fc3f7'; ctx.textAlign = 'right';
-    ctx.fillText(`🌟 ${STAGES[currentStageIndex].name}`, W-18, 33);
+    ctx.fillStyle = "#26351a";
+
+    ctx.fillRect(
+        food.x * SIZE + 2,
+        food.y * SIZE + 2,
+        SIZE - 4,
+        SIZE - 4
+    );
+
+
+    /* SNAKE */
+
+    snake.forEach((part, index) => {
+
+        ctx.fillStyle = "#26351a";
+
+        if (index === 0) {
+
+            ctx.fillRect(
+                part.x * SIZE,
+                part.y * SIZE,
+                SIZE,
+                SIZE
+            );
+
+            /*
+            Mata ular dibuat sedikit
+            seperti pixel Nokia.
+            */
+
+            ctx.fillStyle = "#a9b77a";
+
+            if (direction.x !== 0) {
+
+                ctx.fillRect(
+                    part.x * SIZE +
+                    (direction.x > 0 ? 8 : 2),
+                    part.y * SIZE + 3,
+                    2,
+                    2
+                );
+
+                ctx.fillRect(
+                    part.x * SIZE +
+                    (direction.x > 0 ? 8 : 2),
+                    part.y * SIZE + 7,
+                    2,
+                    2
+                );
+
+            } else {
+
+                ctx.fillRect(
+                    part.x * SIZE + 3,
+                    part.y * SIZE +
+                    (direction.y > 0 ? 8 : 2),
+                    2,
+                    2
+                );
+
+                ctx.fillRect(
+                    part.x * SIZE + 7,
+                    part.y * SIZE +
+                    (direction.y > 0 ? 8 : 2),
+                    2,
+                    2
+                );
+            }
+
+        } else {
+
+            ctx.fillRect(
+                part.x * SIZE + 1,
+                part.y * SIZE + 1,
+                SIZE - 2,
+                SIZE - 2
+            );
+        }
+
+    });
+
+
+    /* GAME OVER */
 
     if (gameOver) {
-        ctx.fillStyle = 'rgba(0,0,0,0.85)'; ctx.fillRect(0, 0, W, H);
-        ctx.fillStyle = '#ff1744'; ctx.font = 'bold 72px monospace'; ctx.textAlign = 'center';
-        ctx.fillText('GAME OVER', W/2, 210);
-        ctx.fillStyle = '#fff'; ctx.font = '28px monospace';
-        ctx.fillText('Tekan R untuk restart', W/2, 270);
-        ctx.fillStyle = '#888'; ctx.font = '20px monospace';
-        ctx.fillText(`Score: ${player.score}`, W/2, 320);
+
+        ctx.fillStyle =
+            "rgba(169,183,122,.88)";
+
+        ctx.fillRect(
+            20,
+            85,
+            200,
+            70
+        );
+
+        ctx.fillStyle = "#26351a";
+
+        ctx.textAlign = "center";
+
+        ctx.font = "bold 20px monospace";
+
+        ctx.fillText(
+            "GAME OVER",
+            canvas.width / 2,
+            112
+        );
+
+        ctx.font = "bold 11px monospace";
+
+        ctx.fillText(
+            "PRESS ENTER",
+            canvas.width / 2,
+            135
+        );
+
+        ctx.fillText(
+            "SCORE: " + score,
+            canvas.width / 2,
+            150
+        );
     }
 
-    if (winScreen) {
-        ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, W, H);
-        const pulse = Math.sin(frameCount*0.08)*5;
-        ctx.fillStyle = '#ffd700'; ctx.font = 'bold 64px monospace'; ctx.textAlign = 'center';
-        ctx.fillText('🎉 STAGE CLEAR! 🎉', W/2, 190+pulse/2);
-        ctx.fillStyle = '#fff'; ctx.font = '30px monospace';
-        ctx.fillText(`Score: ${player.score}`, W/2, 250);
-        const nextStage = currentStageIndex < STAGES.length-1 ? STAGES[currentStageIndex+1].name : '★ FINISH! ★';
-        ctx.fillStyle = '#4fc3f7'; ctx.font = '24px monospace';
-        ctx.fillText(`Next: ${nextStage}`, W/2, 300);
-        if (currentStageIndex >= STAGES.length-1) {
-            ctx.fillStyle = '#ffd700'; ctx.font = 'bold 36px monospace';
-            ctx.fillText('🏆 YOU WIN THE GAME! 🏆', W/2, 360);
-        }
-        const progress = (stageTransition % 90) / 90;
-        ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.fillRect(W/2-200, 340, 400, 10);
-        ctx.fillStyle = '#4fc3f7'; ctx.fillRect(W/2-200, 340, 400*progress, 10);
+
+    /* PAUSE */
+
+    if (paused && !gameOver) {
+
+        ctx.fillStyle =
+            "rgba(169,183,122,.88)";
+
+        ctx.fillRect(
+            40,
+            90,
+            160,
+            60
+        );
+
+        ctx.fillStyle = "#26351a";
+
+        ctx.textAlign = "center";
+
+        ctx.font = "bold 20px monospace";
+
+        ctx.fillText(
+            "PAUSED",
+            canvas.width / 2,
+            118
+        );
+
+        ctx.font = "bold 10px monospace";
+
+        ctx.fillText(
+            "PRESS P",
+            canvas.width / 2,
+            137
+        );
     }
 }
 
-function loop() { update(); draw(); requestAnimationFrame(loop); }
 
-resetGame();
-loop();
+/* =========================
+   GAME OVER
+========================= */
+
+function endGame() {
+
+    gameOver = true;
+
+    clearInterval(timer);
+
+    draw();
+}
+
+
+/* =========================
+   KEYBOARD
+========================= */
+
+document.addEventListener(
+    "keydown",
+    function(e) {
+
+        const key = e.key;
+
+
+        /* RESTART */
+
+        if (
+            key === "Enter" &&
+            gameOver
+        ) {
+
+            startGame();
+            return;
+        }
+
+
+        /* PAUSE */
+
+        if (
+            key.toLowerCase() === "p"
+        ) {
+
+            if (!gameOver) {
+
+                paused = !paused;
+
+                draw();
+            }
+
+            return;
+        }
+
+
+        if (gameOver || paused)
+            return;
+
+
+        /* PREVENT PAGE SCROLL */
+
+        if (
+            [
+                "ArrowUp",
+                "ArrowDown",
+                "ArrowLeft",
+                "ArrowRight"
+            ].includes(key)
+        ) {
+
+            e.preventDefault();
+        }
+
+
+        changeDirection(key);
+
+    }
+);
+
+
+/* =========================
+   DIRECTION
+========================= */
+
+function changeDirection(key) {
+
+    if (
+        key === "ArrowUp" &&
+        direction.y !== 1
+    ) {
+
+        nextDirection = {
+            x: 0,
+            y: -1
+        };
+
+    }
+
+    else if (
+        key === "ArrowDown" &&
+        direction.y !== -1
+    ) {
+
+        nextDirection = {
+            x: 0,
+            y: 1
+        };
+
+    }
+
+    else if (
+        key === "ArrowLeft" &&
+        direction.x !== 1
+    ) {
+
+        nextDirection = {
+            x: -1,
+            y: 0
+        };
+
+    }
+
+    else if (
+        key === "ArrowRight" &&
+        direction.x !== -1
+    ) {
+
+        nextDirection = {
+            x: 1,
+            y: 0
+        };
+
+    }
+}
+
+
+/* =========================
+   ON-SCREEN BUTTONS
+========================= */
+
+document.querySelectorAll(".key[data-key]")
+.forEach(button => {
+
+    button.addEventListener(
+        "click",
+        function() {
+
+            if (
+                gameOver ||
+                paused
+            ) return;
+
+            changeDirection(
+                button.dataset.key
+            );
+        }
+    );
+
+});
+
+
+/* =========================
+   START
+========================= */
+
+startGame();
+
 </script>
+
 </body>
 </html>
