@@ -3,385 +3,549 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Bounce Classic Fan Game</title>
+<title>Super Mario Bros - PSP Style</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#222;font-family:monospace;color:#fff;display:grid;place-items:center;min-height:100vh}
-#wrap{width:min(900px,100vw);padding:14px;text-align:center}canvas{width:100%;image-rendering:pixelated;border:8px solid #aaa;background:#d9e8c8;box-shadow:0 0 0 4px #333}
-p{margin:10px 0 0;color:#ddd}kbd{background:#555;border-radius:4px;padding:2px 6px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;font-family:'Courier New',monospace;display:grid;place-items:center;min-height:100vh;overflow:hidden}
+#wrap{position:relative;width:min(900px,100vw);padding:10px}
+#gameContainer{position:relative;background:#5c94fc;border:6px solid #2a2a4a;border-radius:12px;box-shadow:0 0 30px rgba(92,148,252,0.3),inset 0 0 20px rgba(0,0,0,0.3)}
+canvas{display:block;width:100%;image-rendering:pixelated;background:#5c94fc}
+#controls{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding:8px 16px;background:rgba(26,26,46,0.9);border-radius:8px;border:2px solid #3a3a5a}
+#controls kbd{background:#2a2a4a;color:#fff;padding:4px 12px;border-radius:4px;font-size:14px;border:1px solid #4a4a6a}
+#controls span{color:#888;font-size:12px}
+#status{color:#4fc3f7;font-weight:bold;font-size:14px}
 </style>
-</head><body><div id="wrap">
-<canvas id="game" width="800" height="480"></canvas>
-<p><kbd>←</kbd> <kbd>→</kbd> bergerak · <kbd>↑</kbd> lompat · <kbd>R</kbd> ulang level</p>
+</head>
+<body>
+<div id="wrap">
+<div id="gameContainer">
+<canvas id="game" width="800" height="400"></canvas>
+</div>
+<div id="controls">
+<div>
+<kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd>
+<span style="color:#888;margin:0 8px;">|</span>
+<kbd>Z</kbd> Lompat
+<span style="color:#888;margin:0 8px;">|</span>
+<kbd>R</kbd> Restart
+</div>
+<div id="status">★ COINS: <span id="coinDisplay">0</span> | SCORE: <span id="scoreDisplay">0</span></div>
+</div>
 </div>
 <script>
-const c=document.getElementById("game"),x=c.getContext("2d");
-const W=c.width,H=c.height;
-const keys={}; 
-addEventListener("keydown",e=>{
-    keys[e.key]=true;
-    if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].includes(e.key))e.preventDefault()
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = 800, H = 400;
+
+// Keys
+const keys = {};
+document.addEventListener('keydown', e => {
+    keys[e.key.toLowerCase()] = true;
+    if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault();
 });
-addEventListener("keyup",e=>keys[e.key]=false);
+document.addEventListener('keyup', e => {
+    keys[e.key.toLowerCase()] = false;
+});
 
-// Level - platform dengan posisi yang mirip Bounce Nokia
-const level=[
-    [0,440,800,40], // lantai dasar
-    [70,360,150,22],
-    [285,310,120,22],
-    [460,365,180,22],
-    [610,275,110,22],
-    [120,230,100,22],
-    [300,175,135,22],
-    [510,125,190,22],
-    [735,380,65,22]
+// Game constants
+const GRAVITY = 0.6;
+const FRICTION = 0.85;
+const MAX_SPEED = 4.5;
+
+// Level data
+const platforms = [
+    // Ground
+    {x:0, y:360, w:800, h:40, type:'ground'},
+    // Floating platforms
+    {x:100, y:300, w:80, h:16, type:'brick'},
+    {x:220, y:280, w:60, h:16, type:'brick'},
+    {x:320, y:320, w:100, h:16, type:'brick'},
+    {x:460, y:290, w:60, h:16, type:'brick'},
+    {x:560, y:270, w:80, h:16, type:'brick'},
+    {x:680, y:310, w:80, h:16, type:'brick'},
+    // Question blocks
+    {x:150, y:240, w:32, h:32, type:'question', coin:true},
+    {x:350, y:260, w:32, h:32, type:'question', coin:true},
+    {x:580, y:210, w:32, h:32, type:'question', coin:true},
+    // Pipes
+    {x:420, y:330, w:40, h:30, type:'pipe'},
+    {x:700, y:330, w:40, h:30, type:'pipe'},
 ];
 
-const spikes=[
-    [225,418,55],
-    [650,418,70],
-    [395,288,55],
-    [720,253,55]
+// Enemies
+const enemies = [
+    {x:200, y:340, w:28, h:28, vx:1.2, type:'goomba', alive:true},
+    {x:500, y:340, w:28, h:28, vx:-1.0, type:'goomba', alive:true},
+    {x:650, y:340, w:28, h:28, vx:1.5, type:'goomba', alive:true},
+    {x:320, y:290, w:28, h:28, vx:0.8, type:'goomba', alive:true},
 ];
 
-const rings=[
-    [130,315],[185,315],
-    [335,265],[385,265],
-    [520,320],[575,320],
-    [655,230],[170,185],
-    [355,130],[400,130],
-    [560,80],[625,80]
+// Coins
+const coins = [
+    {x:130, y:340, collected:false},
+    {x:170, y:340, collected:false},
+    {x:250, y:320, collected:false},
+    {x:350, y:360, collected:false},
+    {x:490, y:330, collected:false},
+    {x:530, y:330, collected:false},
+    {x:590, y:310, collected:false},
+    {x:630, y:310, collected:false},
+    {x:710, y:350, collected:false},
 ];
 
-let ball, score, won, cam;
+// Flag pole
+const flag = {x:770, y:300, height:60};
+
+// Player
+let player = {
+    x: 50,
+    y: 340,
+    w: 24,
+    h: 32,
+    vx: 0,
+    vy: 0,
+    onGround: false,
+    facing: 1,
+    frame: 0,
+    frameTimer: 0,
+    lives: 3,
+    coins: 0,
+    score: 0,
+    dead: false,
+    win: false,
+    invincible: 0
+};
+
+// Camera
+let camera = {x:0};
+
+// Game state
+let gameOver = false;
+let winScreen = false;
 let frameCount = 0;
 
-function reset(){
-    // Parameter gerakan sangat lambat seperti Bounce Nokia
-    ball = {
-        x: 45,
-        y: 400,
-        r: 16,
-        vx: 0,
-        vy: 0,
-        on: false,
-        // Friction tinggi untuk gerakan lebih lambat
-        friction: 0.92,
-        // Kecepatan maksimum sangat rendah
-        maxSpeed: 3.2,
-        // Akselerasi sangat kecil
-        acceleration: 0.25,
-        // Gravitasi ringan
-        gravity: 0.28,
-        // Lompatan lebih rendah
-        jumpPower: -7.0,
-        targetVx: 0
-    };
-    score = 0;
-    won = false;
-    cam = 0;
-    for(const r of rings) r[2] = false;
+function resetGame() {
+    player.x = 50;
+    player.y = 340;
+    player.vx = 0;
+    player.vy = 0;
+    player.onGround = false;
+    player.dead = false;
+    player.win = false;
+    player.invincible = 0;
+    player.coins = 0;
+    player.score = 0;
+    
+    enemies.forEach(e => e.alive = true);
+    coins.forEach(c => c.collected = false);
+    platforms.forEach(p => {
+        if(p.type === 'question') p.coin = true;
+    });
+    
+    gameOver = false;
+    winScreen = false;
+    camera.x = 0;
+    updateUI();
 }
 
-reset();
-
-function rectHitCircle(b, r){
-    let nx = Math.max(r[0], Math.min(b.x, r[0] + r[2]));
-    let ny = Math.max(r[1], Math.min(b.y, r[1] + r[3]));
-    let dx = b.x - nx, dy = b.y - ny;
-    return dx*dx + dy*dy < b.r*b.r;
+function updateUI() {
+    document.getElementById('coinDisplay').textContent = player.coins;
+    document.getElementById('scoreDisplay').textContent = player.score;
 }
 
-function update(){
+function rectCollide(a, b) {
+    return a.x < b.x + b.w && a.x + a.w > b.x &&
+           a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+function update() {
     frameCount++;
-    if(keys.r||keys.R){reset();keys.r=keys.R=false}
-    if(won)return;
-
-    // Gerakan horizontal yang sangat lambat
-    let moveDir = 0;
-    if(keys.ArrowLeft) moveDir = -1;
-    if(keys.ArrowRight) moveDir = 1;
-
-    // Akselerasi sangat bertahap
-    if(moveDir !== 0) {
-        ball.vx += moveDir * ball.acceleration;
-        // Batasi kecepatan sangat rendah
-        if(Math.abs(ball.vx) > ball.maxSpeed) {
-            ball.vx = moveDir * ball.maxSpeed;
+    if(gameOver || winScreen) {
+        if(keys['r']) resetGame();
+        return;
+    }
+    
+    if(player.dead) {
+        if(keys['r']) resetGame();
+        return;
+    }
+    
+    // Player movement
+    let moveX = 0;
+    if(keys['arrowleft']) moveX = -1;
+    if(keys['arrowright']) moveX = 1;
+    
+    if(moveX !== 0) {
+        player.vx += moveX * 0.5;
+        if(Math.abs(player.vx) > MAX_SPEED) {
+            player.vx = moveX * MAX_SPEED;
         }
+        player.facing = moveX;
     } else {
-        // Perlambatan tinggi
-        ball.vx *= ball.friction;
-        if(Math.abs(ball.vx) < 0.03) ball.vx = 0;
+        player.vx *= FRICTION;
+        if(Math.abs(player.vx) < 0.1) player.vx = 0;
     }
-
-    // Lompatan - lebih rendah
-    if(keys.ArrowUp && ball.on) {
-        ball.vy = ball.jumpPower;
-        ball.on = false;
+    
+    // Jump
+    if((keys['z'] || keys['arrowup']) && player.onGround) {
+        player.vy = -10;
+        player.onGround = false;
     }
-
-    // Gravitasi ringan
-    ball.vy += ball.gravity;
-    if(ball.vy > 8) ball.vy = 8;
-
-    // Update posisi X
-    ball.x += ball.vx;
-
-    // Deteksi tabrakan horizontal
-    for(const r of level){
-        if(rectHitCircle(ball, r)){
-            if(ball.vx > 0) {
-                ball.x = r[0] - ball.r;
-                ball.vx *= -0.15;
-            } else if(ball.vx < 0) {
-                ball.x = r[0] + r[2] + ball.r;
-                ball.vx *= -0.15;
+    
+    // Gravity
+    player.vy += GRAVITY;
+    if(player.vy > 12) player.vy = 12;
+    
+    // Move X
+    player.x += player.vx;
+    
+    // Collision X
+    for(const p of platforms) {
+        if(rectCollide(player, p)) {
+            if(player.vx > 0) {
+                player.x = p.x - player.w;
+            } else if(player.vx < 0) {
+                player.x = p.x + p.w;
+            }
+            player.vx = 0;
+        }
+    }
+    
+    // Move Y
+    player.y += player.vy;
+    player.onGround = false;
+    
+    // Collision Y
+    for(const p of platforms) {
+        if(rectCollide(player, p)) {
+            if(player.vy > 0) {
+                player.y = p.y - player.h;
+                player.vy = 0;
+                player.onGround = true;
+                
+                // Question block
+                if(p.type === 'question' && p.coin) {
+                    p.coin = false;
+                    player.coins++;
+                    player.score += 100;
+                    updateUI();
+                }
+            } else if(player.vy < 0) {
+                player.y = p.y + p.h;
+                player.vy = 0;
             }
         }
     }
-
-    // Update posisi Y
-    ball.y += ball.vy;
-    ball.on = false;
-
-    // Deteksi tabrakan vertikal
-    for(const r of level){
-        if(rectHitCircle(ball, r)){
-            if(ball.vy > 0) {
-                ball.y = r[1] - ball.r;
-                ball.vy = 0;
-                ball.on = true;
-            } else if(ball.vy < 0) {
-                ball.y = r[1] + r[3] + ball.r;
-                ball.vy = 0;
+    
+    // Collect coins
+    for(const c of coins) {
+        if(!c.collected && Math.abs(player.x + player.w/2 - c.x) < 20 &&
+           Math.abs(player.y + player.h/2 - c.y) < 20) {
+            c.collected = true;
+            player.coins++;
+            player.score += 50;
+            updateUI();
+        }
+    }
+    
+    // Enemies
+    for(const e of enemies) {
+        if(!e.alive) continue;
+        
+        e.x += e.vx;
+        
+        // Enemy collision with platforms
+        let onPlatform = false;
+        for(const p of platforms) {
+            if(p.type === 'ground' || p.type === 'pipe') {
+                if(rectCollide(e, p)) {
+                    e.x -= e.vx;
+                    e.vx *= -1;
+                }
+            }
+        }
+        
+        // Player vs enemy
+        if(!player.invincible && rectCollide(player, e)) {
+            if(player.vy > 0 && player.y + player.h - e.y < 25) {
+                // Stomp enemy
+                e.alive = false;
+                player.vy = -8;
+                player.score += 200;
+                updateUI();
+            } else {
+                // Player hit
+                player.dead = true;
+                player.vy = -10;
+                player.lives--;
+                updateUI();
+                setTimeout(() => {
+                    if(player.lives > 0) resetGame();
+                    else gameOver = true;
+                }, 1000);
             }
         }
     }
-
-    // Deteksi duri
-    for(const s of spikes){
-        if(ball.x + ball.r > s[0] && ball.x - ball.r < s[0] + s[2] &&
-           ball.y + ball.r > s[1] - 22 && ball.y - ball.r < s[1]) {
-            reset();
-        }
+    
+    // Flag pole
+    if(Math.abs(player.x + player.w/2 - flag.x) < 20 &&
+       player.y + player.h > flag.y) {
+        winScreen = true;
     }
-
-    // Kumpulkan cincin
-    for(const r of rings){
-        if(!r[2] && Math.hypot(ball.x - r[0], ball.y - r[1]) < ball.r + 12) {
-            r[2] = true;
-            score++;
-        }
+    
+    // Fall off screen
+    if(player.y > H + 50) {
+        player.dead = true;
+        player.lives--;
+        updateUI();
+        setTimeout(() => {
+            if(player.lives > 0) resetGame();
+            else gameOver = true;
+        }, 1000);
     }
-
-    // Cek finish
-    if(ball.x > 765 && ball.y > 330 && score === rings.length) won = true;
-
-    // Jatuh dari layar
-    if(ball.y > H + 50) reset();
+    
+    // Camera follow
+    let targetCam = player.x - 300;
+    if(targetCam < 0) targetCam = 0;
+    if(targetCam > 400) targetCam = 400;
+    camera.x += (targetCam - camera.x) * 0.1;
+    
+    // Win condition
+    if(winScreen) {
+        player.score += 1000;
+        updateUI();
+    }
+    
+    // Invincibility timer
+    if(player.invincible > 0) player.invincible--;
 }
 
-function draw(){
-    x.clearRect(0,0,W,H);
+function draw() {
+    ctx.clearRect(0, 0, W, H);
     
-    // Background gradien seperti Nokia
-    let grad = x.createLinearGradient(0,0,0,H);
-    grad.addColorStop(0,'#b8d4b0');
-    grad.addColorStop(1,'#9bb892');
-    x.fillStyle = grad;
-    x.fillRect(0,0,W,H);
+    // Sky gradient
+    let skyGrad = ctx.createLinearGradient(0, 0, 0, H);
+    skyGrad.addColorStop(0, '#5c94fc');
+    skyGrad.addColorStop(0.7, '#88b0ff');
+    skyGrad.addColorStop(1, '#aaccff');
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, W, H);
     
-    // Texture subtle
-    x.fillStyle = "rgba(0,0,0,0.03)";
-    for(let i = 0; i < H; i += 3) {
-        x.fillRect(0, i, W, 1);
+    // Clouds
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    const clouds = [
+        {x:50, y:40, s:1.2},
+        {x:200, y:25, s:0.8},
+        {x:400, y:50, s:1.5},
+        {x:600, y:30, s:0.9},
+    ];
+    for(const c of clouds) {
+        const cx = (c.x - camera.x * 0.3) % 900;
+        ctx.beginPath();
+        ctx.arc(cx - 30*c.s, c.y, 30*c.s, 0, Math.PI*2);
+        ctx.arc(cx, c.y - 15*c.s, 35*c.s, 0, Math.PI*2);
+        ctx.arc(cx + 30*c.s, c.y, 28*c.s, 0, Math.PI*2);
+        ctx.fill();
     }
-
-    // Gambar platform
-    for(const r of level){
-        // Shadow
-        x.fillStyle = "rgba(0,0,0,0.15)";
-        x.fillRect(r[0]+3, r[1]+3, r[2], r[3]);
-        
-        // Platform utama
-        x.fillStyle = "#4a5a3a";
-        x.fillRect(r[0], r[1], r[2], r[3]);
-        
-        // Highlight atas
-        x.fillStyle = "#6a8a5a";
-        x.fillRect(r[0], r[1], r[2], 3);
-        
-        // Texture garis
-        x.fillStyle = "rgba(0,0,0,0.1)";
-        for(let i = r[0] + 10; i < r[0] + r[2]; i += 20) {
-            x.fillRect(i, r[1] + 5, 1, r[3] - 10);
+    
+    // Draw platforms with camera offset
+    const drawX = (x) => x - camera.x;
+    
+    for(const p of platforms) {
+        const dx = drawX(p.x);
+        if(dx > -100 && dx < 900) {
+            if(p.type === 'ground') {
+                // Grass
+                ctx.fillStyle = '#7c9c5c';
+                ctx.fillRect(dx, p.y, p.w, 12);
+                ctx.fillStyle = '#8a6a4a';
+                ctx.fillRect(dx, p.y + 12, p.w, p.h - 12);
+                // Grass detail
+                ctx.fillStyle = '#6a8a4a';
+                for(let i = 0; i < p.w; i += 8) {
+                    ctx.fillRect(dx + i, p.y - 1, 2, 4);
+                }
+            } else if(p.type === 'brick') {
+                ctx.fillStyle = '#c67b4a';
+                ctx.fillRect(dx, p.y, p.w, p.h);
+                ctx.strokeStyle = '#8a5a3a';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(dx, p.y, p.w, p.h);
+                for(let i = 0; i < p.w; i += 16) {
+                    ctx.strokeRect(dx + i, p.y, 16, p.h);
+                }
+            } else if(p.type === 'question') {
+                ctx.fillStyle = p.coin ? '#f0c040' : '#8a8a8a';
+                ctx.fillRect(dx, p.y, p.w, p.h);
+                ctx.strokeStyle = '#c09020';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(dx, p.y, p.w, p.h);
+                if(p.coin) {
+                    ctx.fillStyle = '#fff';
+                    ctx.font = '20px monospace';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('?', dx + 16, p.y + 25);
+                }
+            } else if(p.type === 'pipe') {
+                ctx.fillStyle = '#2a8a2a';
+                ctx.fillRect(dx - 4, p.y - 12, p.w + 8, 12);
+                ctx.fillRect(dx, p.y, p.w, p.h);
+                ctx.fillStyle = '#3aaa3a';
+                ctx.fillRect(dx + 4, p.y - 8, p.w - 4, 4);
+                ctx.fillRect(dx + 2, p.y + 4, p.w - 4, 4);
+            }
         }
     }
-
-    // Gambar duri
-    for(const s of spikes){
-        x.fillStyle = "#555";
-        x.shadowColor = "rgba(0,0,0,0.2)";
-        x.shadowBlur = 4;
-        for(let i = s[0]; i < s[0] + s[2]; i += 14){
-            x.beginPath();
-            x.moveTo(i, s[1]);
-            x.lineTo(i+7, s[1]-20);
-            x.lineTo(i+14, s[1]);
-            x.closePath();
-            x.fill();
-        }
-        x.shadowBlur = 0;
-    }
-
-    // Gambar cincin dengan efek glow
-    for(const r of rings){
-        if(!r[2]){
-            x.shadowColor = "#e4c534";
-            x.shadowBlur = 15;
-            x.strokeStyle = "#e4c534";
-            x.lineWidth = 5;
-            x.beginPath();
-            x.arc(r[0], r[1], 11, 0, Math.PI*2);
-            x.stroke();
-            
-            x.shadowBlur = 0;
-            x.strokeStyle = "#ffd700";
-            x.lineWidth = 2;
-            x.beginPath();
-            x.arc(r[0], r[1], 7, 0, Math.PI*2);
-            x.stroke();
+    
+    // Draw coins
+    for(const c of coins) {
+        if(!c.collected) {
+            const dx = drawX(c.x);
+            const glow = Math.sin(frameCount * 0.05) * 2;
+            ctx.fillStyle = '#f0c040';
+            ctx.shadowColor = '#f0c040';
+            ctx.shadowBlur = 15 + glow;
+            ctx.beginPath();
+            ctx.arc(dx, c.y, 8, 0, Math.PI*2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#ffd700';
+            ctx.font = '12px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText('$', dx, c.y + 4);
         }
     }
-    x.shadowBlur = 0;
-
-    // Gambar finish
-    x.fillStyle = "#ddd";
-    x.fillRect(770, 310, 5, 130);
-    x.fillStyle = "#cc3333";
-    x.fillRect(775, 310, 25, 20);
-    x.fillStyle = "#ff4444";
-    x.fillRect(778, 313, 19, 14);
-    x.fillStyle = "#fff";
-    x.font = "bold 12px monospace";
-    x.fillText("GOAL", 778, 325);
-
-    // Gambar ball
-    x.save();
-    x.translate(ball.x, ball.y);
     
-    // Shadow ball
-    x.shadowColor = "rgba(0,0,0,0.25)";
-    x.shadowBlur = 6;
-    x.shadowOffsetY = 2;
-    
-    // Bola utama dengan efek 3D
-    let ballGrad = x.createRadialGradient(-5, -5, 2, 0, 0, ball.r);
-    ballGrad.addColorStop(0, '#ff6b6b');
-    ballGrad.addColorStop(0.5, '#e03030');
-    ballGrad.addColorStop(1, '#8b1010');
-    x.fillStyle = ballGrad;
-    x.beginPath();
-    x.arc(0, 0, ball.r, 0, Math.PI*2);
-    x.fill();
-    
-    // Highlight
-    x.shadowBlur = 0;
-    x.fillStyle = "rgba(255,255,255,0.3)";
-    x.beginPath();
-    x.arc(-4, -5, 5, 0, Math.PI*2);
-    x.fill();
-    x.fillStyle = "rgba(255,255,255,0.12)";
-    x.beginPath();
-    x.arc(-6, -7, 3, 0, Math.PI*2);
-    x.fill();
-    
-    x.restore();
-
-    // HUD
-    x.shadowBlur = 0;
-    x.fillStyle = "rgba(30,40,30,0.85)";
-    x.beginPath();
-    x.roundRect(12, 12, 200, 46, 8);
-    x.fill();
-    
-    x.fillStyle = "#fff";
-    x.font = "bold 20px monospace";
-    x.fillText("RINGS " + score + "/" + rings.length, 25, 42);
-    
-    // Progress bar
-    x.fillStyle = "rgba(0,0,0,0.5)";
-    x.fillRect(225, 22, 350, 26);
-    x.fillStyle = "rgba(255,255,255,0.15)";
-    x.fillRect(227, 24, 346, 22);
-    
-    let progress = (score / rings.length) * 340;
-    if(progress > 0) {
-        let gradBar = x.createLinearGradient(227, 0, 227 + progress, 0);
-        gradBar.addColorStop(0, '#ffd700');
-        gradBar.addColorStop(1, '#ff8c00');
-        x.fillStyle = gradBar;
-        x.fillRect(227, 24, progress, 22);
+    // Draw enemies
+    for(const e of enemies) {
+        if(!e.alive) continue;
+        const dx = drawX(e.x);
+        if(dx > -50 && dx < 850) {
+            // Goomba body
+            ctx.fillStyle = '#8a4a3a';
+            ctx.beginPath();
+            ctx.arc(dx + 14, e.y + 10, 14, Math.PI, 0);
+            ctx.fill();
+            ctx.fillRect(dx, e.y + 10, 28, 14);
+            // Feet
+            ctx.fillStyle = '#4a2a1a';
+            const footOff = Math.sin(frameCount * 0.1 + e.x) * 2;
+            ctx.fillRect(dx + 2 + footOff, e.y + 22, 10, 6);
+            ctx.fillRect(dx + 16 - footOff, e.y + 22, 10, 6);
+            // Eyes
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(dx + 6, e.y + 8, 6, 6);
+            ctx.fillRect(dx + 16, e.y + 8, 6, 6);
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(dx + 8 + (e.vx > 0 ? 2 : 0), e.y + 10, 2, 3);
+            ctx.fillRect(dx + 18 + (e.vx > 0 ? 2 : 0), e.y + 10, 2, 3);
+        }
     }
     
-    x.fillStyle = "#fff";
-    x.font = "11px monospace";
-    x.fillText("PROGRESS", 375, 40);
-
-    // Informasi kontrol
-    x.fillStyle = "rgba(30,40,30,0.85)";
-    x.beginPath();
-    x.roundRect(590, 12, 200, 46, 8);
-    x.fill();
-    x.fillStyle = "#aaa";
-    x.font = "12px monospace";
-    x.fillText("← → ↑ untuk bergerak", 603, 34);
-    x.fillText("R untuk restart", 625, 50);
-
-    if(won){
-        x.fillStyle = "rgba(0,0,0,0.75)";
-        x.beginPath();
-        x.roundRect(190, 140, 420, 200, 20);
-        x.fill();
+    // Draw flag
+    const fdx = drawX(flag.x);
+    ctx.fillStyle = '#666';
+    ctx.fillRect(fdx, flag.y - 10, 4, flag.height + 10);
+    ctx.fillStyle = '#ff4444';
+    ctx.beginPath();
+    ctx.moveTo(fdx + 4, flag.y - 10);
+    ctx.lineTo(fdx + 40, flag.y + 10);
+    ctx.lineTo(fdx + 4, flag.y + 30);
+    ctx.fill();
+    ctx.fillStyle = '#ffd700';
+    ctx.font = '12px monospace';
+    ctx.fillText('★', fdx + 14, flag.y + 6);
+    
+    // Draw player
+    if(!player.dead && player.invincible % 4 < 2) {
+        const dx = drawX(player.x);
+        const dy = player.y;
         
-        let pulse = Math.sin(frameCount * 0.05) * 0.08 + 1;
-        x.save();
-        x.translate(400, 220);
-        x.scale(pulse, pulse);
-        
-        x.fillStyle = "#ffd700";
-        x.font = "bold 36px monospace";
-        x.textAlign = "center";
-        x.fillText("★ LEVEL COMPLETE!", 0, 0);
-        x.restore();
-        
-        x.fillStyle = "#fff";
-        x.font = "18px monospace";
-        x.textAlign = "center";
-        x.fillText("Tekan R untuk main lagi", 400, 278);
+        // Body
+        ctx.fillStyle = '#e03030';
+        ctx.fillRect(dx + 4, dy + 8, 16, 16);
+        // Head
+        ctx.fillStyle = '#f0c0a0';
+        ctx.fillRect(dx + 2, dy, 20, 12);
+        // Hat
+        ctx.fillStyle = '#e03030';
+        ctx.fillRect(dx, dy - 2, 24, 6);
+        ctx.fillRect(dx + 4, dy - 6, 16, 4);
+        // Mustache
+        ctx.fillStyle = '#5a3a2a';
+        ctx.fillRect(dx + 4, dy + 8, 16, 3);
+        // Eyes
+        ctx.fillStyle = '#1a1a1a';
+        if(player.facing > 0) {
+            ctx.fillRect(dx + 14, dy + 3, 3, 3);
+            ctx.fillRect(dx + 18, dy + 3, 3, 3);
+        } else {
+            ctx.fillRect(dx + 3, dy + 3, 3, 3);
+            ctx.fillRect(dx + 7, dy + 3, 3, 3);
+        }
+        // Shoes
+        ctx.fillStyle = '#5a3a1a';
+        const walkOff = player.onGround ? Math.sin(frameCount * 0.2) * 2 : 0;
+        ctx.fillRect(dx + 2 + walkOff, dy + 24, 8, 6);
+        ctx.fillRect(dx + 14 - walkOff, dy + 24, 8, 6);
+        // Overall strap
+        ctx.fillStyle = '#c02020';
+        ctx.fillRect(dx + 4, dy + 12, 3, 8);
+        ctx.fillRect(dx + 17, dy + 12, 3, 8);
     }
-
-    // roundRect polyfill
-    CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
-        if (w < 2 * r) r = w / 2;
-        if (h < 2 * r) r = h / 2;
-        this.moveTo(x + r, y);
-        this.lineTo(x + w - r, y);
-        this.quadraticCurveTo(x + w, y, x + w, y + r);
-        this.lineTo(x + w, y + h - r);
-        this.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-        this.lineTo(x + r, y + h);
-        this.quadraticCurveTo(x, y + h, x, y + h - r);
-        this.lineTo(x, y + r);
-        this.quadraticCurveTo(x, y, x + r, y);
-        return this;
-    };
+    
+    // UI overlay
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(10, 10, 200, 28);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 16px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(`❤️ x${player.lives}  🪙 ${player.coins}`, 18, 30);
+    
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(W - 160, 10, 150, 28);
+    ctx.fillStyle = '#ffd700';
+    ctx.textAlign = 'right';
+    ctx.fillText(`SCORE: ${player.score}`, W - 18, 30);
+    
+    // Game over screen
+    if(gameOver) {
+        ctx.fillStyle = 'rgba(0,0,0,0.8)';
+        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#ff4444';
+        ctx.font = 'bold 60px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('GAME OVER', W/2, 180);
+        ctx.fillStyle = '#fff';
+        ctx.font = '24px monospace';
+        ctx.fillText('Tekan R untuk restart', W/2, 240);
+    }
+    
+    // Win screen
+    if(winScreen) {
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#ffd700';
+        ctx.font = 'bold 60px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('🎉 YOU WIN! 🎉', W/2, 180);
+        ctx.fillStyle = '#fff';
+        ctx.font = '24px monospace';
+        ctx.fillText(`Score: ${player.score}`, W/2, 230);
+        ctx.fillStyle = '#aaa';
+        ctx.font = '18px monospace';
+        ctx.fillText('Tekan R untuk main lagi', W/2, 280);
+    }
 }
 
-function loop(){
+function loop() {
     update();
     draw();
     requestAnimationFrame(loop);
 }
+
+resetGame();
 loop();
-</script></body></html>
+</script>
+</body>
+</html>
