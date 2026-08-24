@@ -16,75 +16,373 @@ p{margin:10px 0 0;color:#ddd}kbd{background:#555;border-radius:4px;padding:2px 6
 <script>
 const c=document.getElementById("game"),x=c.getContext("2d");
 const W=c.width,H=c.height;
-const keys={}; addEventListener("keydown",e=>{keys[e.key]=true;if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].includes(e.key))e.preventDefault()});
+const keys={}; 
+addEventListener("keydown",e=>{
+    keys[e.key]=true;
+    if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].includes(e.key))e.preventDefault()
+});
 addEventListener("keyup",e=>keys[e.key]=false);
 
+// Level - platform dengan posisi yang mirip Bounce Nokia
 const level=[
-[0,440,800,40],[70,360,150,22],[285,310,120,22],[460,365,180,22],
-[610,275,110,22],[120,230,100,22],[300,175,135,22],[510,125,190,22],
-[735,380,65,22]
+    [0,440,800,40], // lantai dasar
+    [70,360,150,22],
+    [285,310,120,22],
+    [460,365,180,22],
+    [610,275,110,22],
+    [120,230,100,22],
+    [300,175,135,22],
+    [510,125,190,22],
+    [735,380,65,22]
 ];
-const spikes=[[225,418,55],[650,418,70],[395,288,55],[720,253,55]];
-const rings=[[130,315],[185,315],[335,265],[385,265],[520,320],[575,320],[655,230],[170,185],[355,130],[400,130],[560,80],[625,80]];
-let ball,score,won,cam;
+
+const spikes=[
+    [225,418,55],
+    [650,418,70],
+    [395,288,55],
+    [720,253,55]
+];
+
+const rings=[
+    [130,315],[185,315],
+    [335,265],[385,265],
+    [520,320],[575,320],
+    [655,230],[170,185],
+    [355,130],[400,130],
+    [560,80],[625,80]
+];
+
+let ball, score, won, cam;
+let frameCount = 0;
+
 function reset(){
- ball={x:45,y:400,r:16,vx:0,vy:0,on:false};score=0;won=false;cam=0;
- for(const r of rings)r[2]=false;
+    // Parameter gerakan yang disesuaikan dengan Bounce Nokia
+    ball = {
+        x: 45,
+        y: 400,
+        r: 16,
+        vx: 0,
+        vy: 0,
+        on: false,
+        // friction untuk gerakan lebih halus
+        friction: 0.88,
+        // kecepatan maksimum
+        maxSpeed: 5.5,
+        // akselerasi
+        acceleration: 0.45,
+        // gaya gravitasi (lebih ringan dari sebelumnya)
+        gravity: 0.35,
+        // lompatan
+        jumpPower: -8.5,
+        // untuk gerakan halus
+        targetVx: 0
+    };
+    score = 0;
+    won = false;
+    cam = 0;
+    for(const r of rings) r[2] = false;
 }
+
 reset();
 
-function rectHitCircle(b,r){
- let nx=Math.max(r[0],Math.min(b.x,r[0]+r[2])),ny=Math.max(r[1],Math.min(b.y,r[1]+r[3]));
- let dx=b.x-nx,dy=b.y-ny;return dx*dx+dy*dy<b.r*b.r;
+function rectHitCircle(b, r){
+    let nx = Math.max(r[0], Math.min(b.x, r[0] + r[2]));
+    let ny = Math.max(r[1], Math.min(b.y, r[1] + r[3]));
+    let dx = b.x - nx, dy = b.y - ny;
+    return dx*dx + dy*dy < b.r*b.r;
 }
+
 function update(){
- if(keys.r||keys.R){reset();keys.r=keys.R=false}
- if(won)return;
- ball.vx+=(keys.ArrowLeft?-0.55:0)+(keys.ArrowRight?0.55:0);
- ball.vx*=0.91; ball.vx=Math.max(-6,Math.min(6,ball.vx));
- if((keys.ArrowUp)&&ball.on){ball.vy=-10;ball.on=false}
- ball.vy+=0.48;ball.vy=Math.min(12,ball.vy);
- ball.x+=ball.vx; ball.on=false;
- for(const r of level){
-   if(rectHitCircle(ball,r)){
-    if(ball.vx>0)ball.x=r[0]-ball.r; else ball.x=r[0]+r[2]+ball.r;
-    ball.vx*=-0.45;
-   }
- }
- ball.y+=ball.vy;
- for(const r of level){
-   if(rectHitCircle(ball,r)){
-    if(ball.vy>0){ball.y=r[1]-ball.r;ball.vy*=-0.18;ball.on=true}
-    else {ball.y=r[1]+r[3]+ball.r;ball.vy=0}
-   }
- }
- for(const s of spikes){
-  if(ball.x+ball.r>s[0]&&ball.x-ball.r<s[0]+s[2]&&ball.y+ball.r>s[1]-22&&ball.y-ball.r<s[1])reset();
- }
- for(const r of rings)if(!r[2]&&Math.hypot(ball.x-r[0],ball.y-r[1])<ball.r+12){r[2]=true;score++}
- if(ball.x>765&&ball.y>330&&score===rings.length)won=true;
- if(ball.y>H+50)reset();
+    frameCount++;
+    if(keys.r||keys.R){reset();keys.r=keys.R=false}
+    if(won)return;
+
+    // Gerakan horizontal yang lebih halus seperti di Nokia
+    let moveDir = 0;
+    if(keys.ArrowLeft) moveDir = -1;
+    if(keys.ArrowRight) moveDir = 1;
+
+    // Akselerasi bertahap
+    if(moveDir !== 0) {
+        ball.vx += moveDir * ball.acceleration;
+        // Batasi kecepatan maksimum
+        if(Math.abs(ball.vx) > ball.maxSpeed) {
+            ball.vx = moveDir * ball.maxSpeed;
+        }
+    } else {
+        // Perlambatan bertahap (friction)
+        ball.vx *= ball.friction;
+        // Hentikan jika sangat kecil
+        if(Math.abs(ball.vx) < 0.05) ball.vx = 0;
+    }
+
+    // Lompatan - hanya jika di permukaan
+    if(keys.ArrowUp && ball.on) {
+        ball.vy = ball.jumpPower;
+        ball.on = false;
+    }
+
+    // Gravitasi seperti di Nokia
+    ball.vy += ball.gravity;
+    // Batasi kecepatan jatuh maksimum
+    if(ball.vy > 10) ball.vy = 10;
+
+    // Update posisi X
+    ball.x += ball.vx;
+
+    // Deteksi tabrakan horizontal dengan platform
+    for(const r of level){
+        if(rectHitCircle(ball, r)){
+            if(ball.vx > 0) {
+                ball.x = r[0] - ball.r;
+                ball.vx *= -0.2; // Pantulan kecil
+            } else if(ball.vx < 0) {
+                ball.x = r[0] + r[2] + ball.r;
+                ball.vx *= -0.2;
+            }
+        }
+    }
+
+    // Update posisi Y
+    ball.y += ball.vy;
+    ball.on = false;
+
+    // Deteksi tabrakan vertikal dengan platform
+    for(const r of level){
+        if(rectHitCircle(ball, r)){
+            if(ball.vy > 0) {
+                // Mendarat di platform
+                ball.y = r[1] - ball.r;
+                ball.vy = 0;
+                ball.on = true;
+            } else if(ball.vy < 0) {
+                // Menabrak dari bawah
+                ball.y = r[1] + r[3] + ball.r;
+                ball.vy = 0;
+            }
+        }
+    }
+
+    // Deteksi duri
+    for(const s of spikes){
+        if(ball.x + ball.r > s[0] && ball.x - ball.r < s[0] + s[2] &&
+           ball.y + ball.r > s[1] - 22 && ball.y - ball.r < s[1]) {
+            reset();
+        }
+    }
+
+    // Kumpulkan cincin
+    for(const r of rings){
+        if(!r[2] && Math.hypot(ball.x - r[0], ball.y - r[1]) < ball.r + 12) {
+            r[2] = true;
+            score++;
+        }
+    }
+
+    // Cek finish
+    if(ball.x > 765 && ball.y > 330 && score === rings.length) won = true;
+
+    // Jatuh dari layar
+    if(ball.y > H + 50) reset();
+
+    // Efek kamera sedikit bergerak (seperti di Nokia)
+    // Tidak perlu karena kita tidak menggunakan kamera
 }
+
 function draw(){
- x.clearRect(0,0,W,H);
- x.fillStyle="#dcebcf";x.fillRect(0,0,W,H);
- // subtle scanline/classic background
- x.fillStyle="rgba(0,0,0,.035)";for(let y=0;y<H;y+=4)x.fillRect(0,y,W,1);
- // platforms
- for(const r of level){x.fillStyle="#3c4a3d";x.fillRect(...r);x.fillStyle="#72856d";x.fillRect(r[0],r[1],r[2],4)}
- // spikes
- for(const s of spikes){x.fillStyle="#3a3a3a";for(let i=s[0];i<s[0]+s[2];i+=14){x.beginPath();x.moveTo(i,s[1]);x.lineTo(i+7,s[1]-20);x.lineTo(i+14,s[1]);x.fill()}}
- // rings
- for(const r of rings)if(!r[2]){x.strokeStyle="#e4c534";x.lineWidth=5;x.beginPath();x.arc(r[0],r[1],11,0,Math.PI*2);x.stroke()}
- // finish
- x.fillStyle="#eee";x.fillRect(770,310,5,130);x.fillStyle="#d33";x.fillRect(775,310,25,20);
- // ball
- x.save();x.translate(ball.x,ball.y);x.fillStyle="#d92727";x.beginPath();x.arc(0,0,ball.r,0,Math.PI*2);x.fill();
- x.strokeStyle="#8b1010";x.lineWidth=2;x.stroke();x.fillStyle="#ff7777";x.beginPath();x.arc(-5,-6,5,0,Math.PI*2);x.fill();x.restore();
- // HUD
- x.fillStyle="#273027";x.fillRect(12,12,190,46);x.fillStyle="#fff";x.font="bold 20px monospace";x.fillText("RINGS "+score+"/"+rings.length,25,42);
- if(score<rings.length){x.fillStyle="rgba(0,0,0,.7)";x.fillRect(215,18,365,34);x.fillStyle="#fff";x.font="14px monospace";x.fillText("Kumpulkan semua cincin untuk finish",225,40)}
- if(won){x.fillStyle="rgba(0,0,0,.78)";x.fillRect(190,150,420,180);x.fillStyle="#fff";x.font="bold 38px monospace";x.fillText("LEVEL COMPLETE!",245,225);x.font="20px monospace";x.fillText("Tekan R untuk main lagi",275,270)}
+    x.clearRect(0,0,W,H);
+    
+    // Background gradien seperti Nokia
+    let grad = x.createLinearGradient(0,0,0,H);
+    grad.addColorStop(0,'#b8d4b0');
+    grad.addColorStop(1,'#9bb892');
+    x.fillStyle = grad;
+    x.fillRect(0,0,W,H);
+    
+    // Texture subtle
+    x.fillStyle = "rgba(0,0,0,0.03)";
+    for(let i = 0; i < H; i += 3) {
+        x.fillRect(0, i, W, 1);
+    }
+
+    // Gambar platform
+    for(const r of level){
+        // Shadow
+        x.fillStyle = "rgba(0,0,0,0.15)";
+        x.fillRect(r[0]+3, r[1]+3, r[2], r[3]);
+        
+        // Platform utama
+        x.fillStyle = "#4a5a3a";
+        x.fillRect(r[0], r[1], r[2], r[3]);
+        
+        // Highlight atas
+        x.fillStyle = "#6a8a5a";
+        x.fillRect(r[0], r[1], r[2], 3);
+        
+        // Texture garis
+        x.fillStyle = "rgba(0,0,0,0.1)";
+        for(let i = r[0] + 10; i < r[0] + r[2]; i += 20) {
+            x.fillRect(i, r[1] + 5, 1, r[3] - 10);
+        }
+    }
+
+    // Gambar duri
+    for(const s of spikes){
+        x.fillStyle = "#555";
+        x.shadowColor = "rgba(0,0,0,0.2)";
+        x.shadowBlur = 4;
+        for(let i = s[0]; i < s[0] + s[2]; i += 14){
+            x.beginPath();
+            x.moveTo(i, s[1]);
+            x.lineTo(i+7, s[1]-20);
+            x.lineTo(i+14, s[1]);
+            x.closePath();
+            x.fill();
+        }
+        x.shadowBlur = 0;
+    }
+
+    // Gambar cincin dengan efek glow
+    for(const r of rings){
+        if(!r[2]){
+            // Glow
+            x.shadowColor = "#e4c534";
+            x.shadowBlur = 15;
+            x.strokeStyle = "#e4c534";
+            x.lineWidth = 5;
+            x.beginPath();
+            x.arc(r[0], r[1], 11, 0, Math.PI*2);
+            x.stroke();
+            
+            // Inner glow
+            x.shadowBlur = 0;
+            x.strokeStyle = "#ffd700";
+            x.lineWidth = 2;
+            x.beginPath();
+            x.arc(r[0], r[1], 7, 0, Math.PI*2);
+            x.stroke();
+        }
+    }
+    x.shadowBlur = 0;
+
+    // Gambar finish
+    x.fillStyle = "#ddd";
+    x.fillRect(770, 310, 5, 130);
+    x.fillStyle = "#cc3333";
+    x.fillRect(775, 310, 25, 20);
+    x.fillStyle = "#ff4444";
+    x.fillRect(778, 313, 19, 14);
+    x.fillStyle = "#fff";
+    x.font = "bold 12px monospace";
+    x.fillText("GOAL", 778, 325);
+
+    // Gambar ball dengan efek 3D
+    x.save();
+    x.translate(ball.x, ball.y);
+    
+    // Shadow ball
+    x.shadowColor = "rgba(0,0,0,0.3)";
+    x.shadowBlur = 8;
+    x.shadowOffsetY = 3;
+    
+    // Bola utama
+    let ballGrad = x.createRadialGradient(-5, -5, 2, 0, 0, ball.r);
+    ballGrad.addColorStop(0, '#ff6b6b');
+    ballGrad.addColorStop(0.6, '#d92727');
+    ballGrad.addColorStop(1, '#8b1010');
+    x.fillStyle = ballGrad;
+    x.beginPath();
+    x.arc(0, 0, ball.r, 0, Math.PI*2);
+    x.fill();
+    
+    // Highlight
+    x.shadowBlur = 0;
+    x.fillStyle = "rgba(255,255,255,0.3)";
+    x.beginPath();
+    x.arc(-5, -6, 6, 0, Math.PI*2);
+    x.fill();
+    x.fillStyle = "rgba(255,255,255,0.15)";
+    x.beginPath();
+    x.arc(-7, -8, 3, 0, Math.PI*2);
+    x.fill();
+    
+    x.restore();
+
+    // HUD
+    x.shadowBlur = 0;
+    x.fillStyle = "rgba(30,40,30,0.85)";
+    x.beginPath();
+    x.roundRect(12, 12, 200, 46, 8);
+    x.fill();
+    
+    x.fillStyle = "#fff";
+    x.font = "bold 20px monospace";
+    x.fillText("RINGS " + score + "/" + rings.length, 25, 42);
+    
+    // Progress bar
+    x.fillStyle = "rgba(0,0,0,0.5)";
+    x.fillRect(225, 22, 350, 26);
+    x.fillStyle = "rgba(255,255,255,0.2)";
+    x.fillRect(227, 24, 346, 22);
+    
+    let progress = (score / rings.length) * 340;
+    if(progress > 0) {
+        let gradBar = x.createLinearGradient(227, 0, 227 + progress, 0);
+        gradBar.addColorStop(0, '#ffd700');
+        gradBar.addColorStop(1, '#ff8c00');
+        x.fillStyle = gradBar;
+        x.fillRect(227, 24, progress, 22);
+    }
+    
+    x.fillStyle = "#fff";
+    x.font = "12px monospace";
+    x.fillText("PROGRESS", 372, 40);
+
+    if(won){
+        x.fillStyle = "rgba(0,0,0,0.75)";
+        x.beginPath();
+        x.roundRect(190, 140, 420, 200, 20);
+        x.fill();
+        
+        // Animasi kemenangan
+        let pulse = Math.sin(frameCount * 0.05) * 0.1 + 1;
+        x.save();
+        x.translate(400, 220);
+        x.scale(pulse, pulse);
+        
+        x.fillStyle = "#ffd700";
+        x.font = "bold 38px monospace";
+        x.textAlign = "center";
+        x.fillText("★ LEVEL COMPLETE!", 0, 0);
+        x.restore();
+        
+        x.fillStyle = "#fff";
+        x.font = "20px monospace";
+        x.textAlign = "center";
+        x.fillText("Tekan R untuk main lagi", 400, 280);
+    }
+
+    // Tambahan roundRect untuk canvas
+    CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+        if (w < 2 * r) r = w / 2;
+        if (h < 2 * r) r = h / 2;
+        this.moveTo(x + r, y);
+        this.lineTo(x + w - r, y);
+        this.quadraticCurveTo(x + w, y, x + w, y + r);
+        this.lineTo(x + w, y + h - r);
+        this.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        this.lineTo(x + r, y + h);
+        this.quadraticCurveTo(x, y + h, x, y + h - r);
+        this.lineTo(x, y + r);
+        this.quadraticCurveTo(x, y, x + r, y);
+        return this;
+    };
 }
-function loop(){update();draw();requestAnimationFrame(loop)}loop();
+
+function loop(){
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+loop();
 </script></body></html>
