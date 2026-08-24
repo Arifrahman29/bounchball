@@ -56,7 +56,7 @@ let ball, score, won, cam;
 let frameCount = 0;
 
 function reset(){
-    // Parameter gerakan yang disesuaikan dengan Bounce Nokia
+    // Parameter gerakan sangat lambat seperti Bounce Nokia
     ball = {
         x: 45,
         y: 400,
@@ -64,17 +64,16 @@ function reset(){
         vx: 0,
         vy: 0,
         on: false,
-        // friction untuk gerakan lebih halus
-        friction: 0.88,
-        // kecepatan maksimum
-        maxSpeed: 5.5,
-        // akselerasi
-        acceleration: 0.45,
-        // gaya gravitasi (lebih ringan dari sebelumnya)
-        gravity: 0.35,
-        // lompatan
-        jumpPower: -8.5,
-        // untuk gerakan halus
+        // Friction tinggi untuk gerakan lebih lambat
+        friction: 0.92,
+        // Kecepatan maksimum sangat rendah
+        maxSpeed: 3.2,
+        // Akselerasi sangat kecil
+        acceleration: 0.25,
+        // Gravitasi ringan
+        gravity: 0.28,
+        // Lompatan lebih rendah
+        jumpPower: -7.0,
         targetVx: 0
     };
     score = 0;
@@ -97,48 +96,46 @@ function update(){
     if(keys.r||keys.R){reset();keys.r=keys.R=false}
     if(won)return;
 
-    // Gerakan horizontal yang lebih halus seperti di Nokia
+    // Gerakan horizontal yang sangat lambat
     let moveDir = 0;
     if(keys.ArrowLeft) moveDir = -1;
     if(keys.ArrowRight) moveDir = 1;
 
-    // Akselerasi bertahap
+    // Akselerasi sangat bertahap
     if(moveDir !== 0) {
         ball.vx += moveDir * ball.acceleration;
-        // Batasi kecepatan maksimum
+        // Batasi kecepatan sangat rendah
         if(Math.abs(ball.vx) > ball.maxSpeed) {
             ball.vx = moveDir * ball.maxSpeed;
         }
     } else {
-        // Perlambatan bertahap (friction)
+        // Perlambatan tinggi
         ball.vx *= ball.friction;
-        // Hentikan jika sangat kecil
-        if(Math.abs(ball.vx) < 0.05) ball.vx = 0;
+        if(Math.abs(ball.vx) < 0.03) ball.vx = 0;
     }
 
-    // Lompatan - hanya jika di permukaan
+    // Lompatan - lebih rendah
     if(keys.ArrowUp && ball.on) {
         ball.vy = ball.jumpPower;
         ball.on = false;
     }
 
-    // Gravitasi seperti di Nokia
+    // Gravitasi ringan
     ball.vy += ball.gravity;
-    // Batasi kecepatan jatuh maksimum
-    if(ball.vy > 10) ball.vy = 10;
+    if(ball.vy > 8) ball.vy = 8;
 
     // Update posisi X
     ball.x += ball.vx;
 
-    // Deteksi tabrakan horizontal dengan platform
+    // Deteksi tabrakan horizontal
     for(const r of level){
         if(rectHitCircle(ball, r)){
             if(ball.vx > 0) {
                 ball.x = r[0] - ball.r;
-                ball.vx *= -0.2; // Pantulan kecil
+                ball.vx *= -0.15;
             } else if(ball.vx < 0) {
                 ball.x = r[0] + r[2] + ball.r;
-                ball.vx *= -0.2;
+                ball.vx *= -0.15;
             }
         }
     }
@@ -147,16 +144,14 @@ function update(){
     ball.y += ball.vy;
     ball.on = false;
 
-    // Deteksi tabrakan vertikal dengan platform
+    // Deteksi tabrakan vertikal
     for(const r of level){
         if(rectHitCircle(ball, r)){
             if(ball.vy > 0) {
-                // Mendarat di platform
                 ball.y = r[1] - ball.r;
                 ball.vy = 0;
                 ball.on = true;
             } else if(ball.vy < 0) {
-                // Menabrak dari bawah
                 ball.y = r[1] + r[3] + ball.r;
                 ball.vy = 0;
             }
@@ -184,9 +179,6 @@ function update(){
 
     // Jatuh dari layar
     if(ball.y > H + 50) reset();
-
-    // Efek kamera sedikit bergerak (seperti di Nokia)
-    // Tidak perlu karena kita tidak menggunakan kamera
 }
 
 function draw(){
@@ -245,7 +237,6 @@ function draw(){
     // Gambar cincin dengan efek glow
     for(const r of rings){
         if(!r[2]){
-            // Glow
             x.shadowColor = "#e4c534";
             x.shadowBlur = 15;
             x.strokeStyle = "#e4c534";
@@ -254,7 +245,6 @@ function draw(){
             x.arc(r[0], r[1], 11, 0, Math.PI*2);
             x.stroke();
             
-            // Inner glow
             x.shadowBlur = 0;
             x.strokeStyle = "#ffd700";
             x.lineWidth = 2;
@@ -276,19 +266,19 @@ function draw(){
     x.font = "bold 12px monospace";
     x.fillText("GOAL", 778, 325);
 
-    // Gambar ball dengan efek 3D
+    // Gambar ball
     x.save();
     x.translate(ball.x, ball.y);
     
     // Shadow ball
-    x.shadowColor = "rgba(0,0,0,0.3)";
-    x.shadowBlur = 8;
-    x.shadowOffsetY = 3;
+    x.shadowColor = "rgba(0,0,0,0.25)";
+    x.shadowBlur = 6;
+    x.shadowOffsetY = 2;
     
-    // Bola utama
+    // Bola utama dengan efek 3D
     let ballGrad = x.createRadialGradient(-5, -5, 2, 0, 0, ball.r);
     ballGrad.addColorStop(0, '#ff6b6b');
-    ballGrad.addColorStop(0.6, '#d92727');
+    ballGrad.addColorStop(0.5, '#e03030');
     ballGrad.addColorStop(1, '#8b1010');
     x.fillStyle = ballGrad;
     x.beginPath();
@@ -299,11 +289,11 @@ function draw(){
     x.shadowBlur = 0;
     x.fillStyle = "rgba(255,255,255,0.3)";
     x.beginPath();
-    x.arc(-5, -6, 6, 0, Math.PI*2);
+    x.arc(-4, -5, 5, 0, Math.PI*2);
     x.fill();
-    x.fillStyle = "rgba(255,255,255,0.15)";
+    x.fillStyle = "rgba(255,255,255,0.12)";
     x.beginPath();
-    x.arc(-7, -8, 3, 0, Math.PI*2);
+    x.arc(-6, -7, 3, 0, Math.PI*2);
     x.fill();
     
     x.restore();
@@ -322,7 +312,7 @@ function draw(){
     // Progress bar
     x.fillStyle = "rgba(0,0,0,0.5)";
     x.fillRect(225, 22, 350, 26);
-    x.fillStyle = "rgba(255,255,255,0.2)";
+    x.fillStyle = "rgba(255,255,255,0.15)";
     x.fillRect(227, 24, 346, 22);
     
     let progress = (score / rings.length) * 340;
@@ -335,8 +325,18 @@ function draw(){
     }
     
     x.fillStyle = "#fff";
+    x.font = "11px monospace";
+    x.fillText("PROGRESS", 375, 40);
+
+    // Informasi kontrol
+    x.fillStyle = "rgba(30,40,30,0.85)";
+    x.beginPath();
+    x.roundRect(590, 12, 200, 46, 8);
+    x.fill();
+    x.fillStyle = "#aaa";
     x.font = "12px monospace";
-    x.fillText("PROGRESS", 372, 40);
+    x.fillText("← → ↑ untuk bergerak", 603, 34);
+    x.fillText("R untuk restart", 625, 50);
 
     if(won){
         x.fillStyle = "rgba(0,0,0,0.75)";
@@ -344,25 +344,24 @@ function draw(){
         x.roundRect(190, 140, 420, 200, 20);
         x.fill();
         
-        // Animasi kemenangan
-        let pulse = Math.sin(frameCount * 0.05) * 0.1 + 1;
+        let pulse = Math.sin(frameCount * 0.05) * 0.08 + 1;
         x.save();
         x.translate(400, 220);
         x.scale(pulse, pulse);
         
         x.fillStyle = "#ffd700";
-        x.font = "bold 38px monospace";
+        x.font = "bold 36px monospace";
         x.textAlign = "center";
         x.fillText("★ LEVEL COMPLETE!", 0, 0);
         x.restore();
         
         x.fillStyle = "#fff";
-        x.font = "20px monospace";
+        x.font = "18px monospace";
         x.textAlign = "center";
-        x.fillText("Tekan R untuk main lagi", 400, 280);
+        x.fillText("Tekan R untuk main lagi", 400, 278);
     }
 
-    // Tambahan roundRect untuk canvas
+    // roundRect polyfill
     CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
         if (w < 2 * r) r = w / 2;
         if (h < 2 * r) r = h / 2;
