@@ -36,11 +36,12 @@ canvas{display:block;width:100%;image-rendering:pixelated;background:#5c94fc;bor
 <span id="powerDisplay" style="color:#8bffb0"></span>
 </div>
 </div>
-<div id="hint">Lompati jurang, injak Goomba dari atas, ambil jamur dari blok "?" untuk jadi besar! Tahan SHIFT untuk lari.</div>
+<div id="hint">Injak musuh dari atas, tendang cangkang Koopa untuk menyerang musuh lain, hindari bola api berputar di kastil!</div>
 </div>
 <script>
 // ============================================================
-//  SUPER MARIO BROS - CLASSIC EDITION (versi diperhalus)
+//  SUPER MARIO BROS - CLASSIC EDITION (revisi: fisika halus,
+//  musuh Koopa Troopa + bola api, stage lebih variatif)
 // ============================================================
 
 const canvas = document.getElementById('game');
@@ -57,17 +58,18 @@ document.addEventListener('keydown', e => {
 });
 document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 
-// ---------- Fisika (diperhalus: akselerasi bertahap, lari, coyote time, jump buffer) ----------
-const GRAVITY = 0.52;
-const FRICTION_GROUND = 0.84;
-const FRICTION_AIR = 0.92;
-const ACCEL = 0.62;
-const RUN_ACCEL = 0.85;
-const MAX_WALK_SPEED = 4.2;
-const MAX_RUN_SPEED = 7.4;
-const JUMP_FORCE = -11.2;
-const RUN_JUMP_BONUS = -1.0;
-const MAX_FALL_SPEED = 13;
+// ---------- Fisika (diperhalus lagi: akselerasi lebih landai, kecepatan
+//            puncak lebih rendah, gravitasi & lompatan lebih lembut) ----------
+const GRAVITY = 0.44;
+const FRICTION_GROUND = 0.86;
+const FRICTION_AIR = 0.94;
+const ACCEL = 0.42;
+const RUN_ACCEL = 0.6;
+const MAX_WALK_SPEED = 3.5;
+const MAX_RUN_SPEED = 6.0;
+const JUMP_FORCE = -10.4;
+const RUN_JUMP_BONUS = -0.9;
+const MAX_FALL_SPEED = 11;
 const COYOTE_FRAMES = 7;
 const JUMP_BUFFER_FRAMES = 7;
 
@@ -86,6 +88,9 @@ const PAL = {
     block: '#FCA044', blockDark: '#B87818', blockLight:'#FFD080',
     pipeLight: '#3CE83C', pipeBody: '#00A800', pipeDark: '#005800',
     goomba: '#C86428', goombaDark: '#7C2C00', goombaFoot: '#3a1608', goombaBelly:'#F0A868',
+    koopaGreen:'#20B830', koopaGreenDark:'#0C7A1C', koopaShell:'#1E9C2E', koopaShellLight:'#5CE070',
+    koopaBelly:'#FCE8A0', koopaFoot:'#0a5010',
+    fireCore:'#FFE070', fireMid:'#FFA030', fireOuter:'#FF4020', fireRod:'#8a8a8a',
     groundTop: '#6AAA4A', groundTopDark:'#4a8a2a', groundBody: '#A8703C', groundBodyDark:'#7a4e24',
     castleGray: '#9a9a9a', castleDark:'#5a5a5a',
     mushCap:'#E8000C', mushCapDark:'#a80000', mushSpot:'#FCFCFC', mushStem:'#FCE0B4', mushStemShade:'#D8A868'
@@ -113,11 +118,25 @@ function staircase(startX, steps, dir, groundType, stepW=32) {
     return out;
 }
 
+// bukit/plateau: tanah yang naik lebih tinggi dari jalur utama (bikin
+// medan berbeda ketinggian, bukan cuma jurang & pipa)
+function plateau(x, w, rise, type='ground') {
+    return {x, y: GROUND_Y - rise, w, h: rise + 60, type};
+}
+
+// platform bergerak (mengapung bolak-balik) — dipakai supaya jalur
+// antar stage terasa beda, bukan cuma reposisi blok
+function mover(x, y, w, h, axis, range, speed, phase=0, type='platform') {
+    return {x, y, w, h, type, move:{axis, range, speed, phase, baseX:x, baseY:y}};
+}
+
+function firebar(x, y, length, speed, dir=1) {
+    return {type:'firebar', x, y, length, speed: speed*dir, angle: Math.random()*Math.PI*2};
+}
+
 // ============================================================
-//  STAGE 1-1 — layout dirapikan lebih dekat ke struktur ikonik
-//  aslinya: blok jamur rahasia di awal -> deretan bata/koin ->
-//  pipa naik bertingkat (2,3,4 tile) -> jurang pertama -> area
-//  goomba & koin -> jurang kedua -> tangga naik-turun -> bendera
+//  STAGE 1-1 — padang rumput klasik: jamur rahasia, pipa bertingkat,
+//  jurang, lalu tangga naik-turun menuju bendera
 // ============================================================
 const LV11_WIDTH = 2680;
 const LV11_GAPS = [[720,808],[1660,1780]];
@@ -127,26 +146,21 @@ const stage11 = {
     levelWidth: LV11_WIDTH,
     platforms: [
         ...groundWithGaps(LV11_WIDTH, LV11_GAPS),
-        // blok tunggal awal berisi JAMUR (klasik!)
         {x:176, y:296, w:32, h:32, type:'question', item:'mushroom'},
-        // deretan 4 blok klasik (bata - koin - bata - koin)
         {x:352, y:296, w:32, h:32, type:'brick'},
         {x:384, y:296, w:32, h:32, type:'question', item:'coin'},
         {x:416, y:296, w:32, h:32, type:'brick'},
         {x:448, y:296, w:32, h:32, type:'question', item:'coin'},
-        // pipa bertingkat naik 2,3,4 tile (persis pola aslinya)
         {x:560, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
         {x:660, y:GROUND_Y-96, w:56, h:96, type:'pipe'},
         {x:770, y:GROUND_Y-128, w:56, h:128, type:'pipe'},
-        // setelah jurang pertama: blok + platform layang
         {x:900, y:296, w:32, h:32, type:'question', item:'coin'},
         {x:932, y:296, w:32, h:32, type:'brick'},
         {x:964, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:1080, y:260, w:96, h:20, type:'platform'},
+        mover(1080, 260, 96, 20, 'x', 60, 0.02, 0),
         {x:1260, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
         {x:1420, y:296, w:32, h:32, type:'question', item:'mushroom'},
         {x:1452, y:296, w:32, h:32, type:'brick'},
-        // setelah jurang kedua: tangga naik lalu turun menuju bendera
         ...staircase(1860, 4, 1, 'gnd'),
         ...staircase(1988, 4, -1, 'gnd'),
         {x:2116, y:GROUND_Y, w:420, h:60, type:'ground'},
@@ -154,10 +168,10 @@ const stage11 = {
     enemies: [
         {x:220, y:392, type:'goomba'},
         {x:600, y:392, type:'goomba'},
-        {x:860, y:392, type:'goomba'},
+        {x:860, y:392, type:'koopa'},
         {x:1000, y:392, type:'goomba'},
         {x:1520, y:392, type:'goomba'},
-        {x:1600, y:392, type:'goomba'},
+        {x:1600, y:392, type:'koopa'},
         {x:1900, y:392, type:'goomba'},
         {x:2040, y:392, type:'goomba'},
     ],
@@ -166,157 +180,187 @@ const stage11 = {
         {x:1120, y:230},{x:1500, y:392},{x:1580, y:392},
         {x:1840, y:392},{x:2200, y:392},{x:2260, y:392},
     ],
+    hazards: [],
     flag: {x:2440, y:340, height:80}
 };
 
-const LV12_WIDTH = 1900;
+// ============================================================
+//  STAGE 1-2 — jalur bukit: banyak plateau naik-turun & platform
+//  melayang bergerak, beda nuansa dari 1-1 walau masih overworld
+// ============================================================
+const LV12_WIDTH = 2000;
 const stage12 = {
-    name: '1-2', theme:'overworld', bgColor1:'#5C94FC', bgColor2:'#8fb8ff',
+    name: '1-2', theme:'overworld', bgColor1:'#4f86e8', bgColor2:'#a8cbff',
     levelWidth: LV12_WIDTH,
     platforms: [
-        ...groundWithGaps(LV12_WIDTH, [[560,648],[1180,1276]]),
-        {x:120, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:152, y:296, w:32, h:32, type:'brick'},
-        {x:184, y:296, w:32, h:32, type:'question', item:'mushroom'},
-        {x:280, y:236, w:80, h:20, type:'platform'},
-        {x:420, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
-        {x:490, y:GROUND_Y-96, w:56, h:96, type:'pipe'},
-        {x:720, y:296, w:32, h:32, type:'brick'},
-        {x:752, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:784, y:296, w:32, h:32, type:'brick'},
-        {x:880, y:230, w:64, h:20, type:'platform'},
-        {x:1000, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
-        {x:1340, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:1372, y:296, w:32, h:32, type:'brick'},
-        ...staircase(1500, 3, 1, 'gnd'),
-        ...staircase(1596, 3, -1, 'gnd'),
-        {x:1692, y:GROUND_Y, w:208, h:60, type:'ground'},
+        ...groundWithGaps(LV12_WIDTH, [[500,588],[1300,1380]]),
+        plateau(120, 160, 64),
+        {x:150, y:296-64, w:32, h:32, type:'question', item:'coin'},
+        plateau(360, 100, 108),
+        mover(600, 300, 90, 20, 'y', 70, 0.018, 1.5),
+        {x:760, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
+        {x:830, y:GROUND_Y-96, w:56, h:96, type:'pipe'},
+        plateau(1000, 220, 40),
+        {x:1050, y:340, w:32, h:32, type:'brick'},
+        {x:1082, y:340, w:32, h:32, type:'question', item:'mushroom'},
+        {x:1114, y:340, w:32, h:32, type:'brick'},
+        mover(1420, 250, 80, 20, 'x', 90, 0.016, 0),
+        plateau(1600, 90, 96),
+        {x:1620, y:296, w:32, h:32, type:'question', item:'coin'},
+        ...staircase(1780, 4, 1, 'gnd'),
+        {x:1908, y:GROUND_Y-128, w:92, h:188, type:'ground'},
     ],
     enemies: [
-        {x:230, y:392, type:'goomba'},{x:340, y:392, type:'goomba'},
-        {x:700, y:392, type:'goomba'},{x:820, y:392, type:'goomba'},
-        {x:1080, y:392, type:'goomba'},{x:1200, y:392, type:'goomba'},
-        {x:1420, y:392, type:'goomba'},
+        {x:260, y:392-64, type:'goomba'},{x:420, y:392, type:'koopa'},
+        {x:700, y:392, type:'goomba'},{x:900, y:392, type:'goomba'},
+        {x:1150, y:392, type:'koopa'},{x:1350, y:392, type:'goomba'},
+        {x:1660, y:392, type:'koopa'},
     ],
     coins: [
-        {x:300, y:392},{x:340, y:210},{x:900, y:392},
-        {x:920, y:200},{x:1420, y:392},{x:1750, y:392},
+        {x:400, y:392},{x:1000, y:260},{x:1200, y:392},{x:1780, y:392},
+    ],
+    hazards: [],
+    flag: {x:1940, y:GROUND_Y-128-90, height:170}
+};
+
+// ============================================================
+//  STAGE 1-3 — panggung platform melayang di atas jurang panjang
+// ============================================================
+const stage13 = {
+    name: '1-3', theme:'sky', bgColor1:'#3fa8ff', bgColor2:'#bfe4ff',
+    levelWidth: 1750,
+    platforms: [
+        {x:0, y:GROUND_Y, w:160, h:60, type:'ground'},
+        {x:1590, y:GROUND_Y, w:160, h:60, type:'ground'},
+        mover(220, 340, 80, 20, 'y', 50, 0.022, 0),
+        {x:340, y:260, w:64, h:20, type:'platform'},
+        mover(460, 300, 70, 20, 'x', 70, 0.02, 2),
+        {x:620, y:220, w:80, h:20, type:'platform'},
+        {x:740, y:300, w:32, h:32, type:'brick'},
+        {x:772, y:300, w:32, h:32, type:'question', item:'mushroom'},
+        {x:804, y:300, w:32, h:32, type:'brick'},
+        mover(920, 260, 90, 20, 'x', 90, 0.015, 1),
+        {x:1080, y:200, w:80, h:20, type:'platform'},
+        {x:1060, y:340, w:32, h:32, type:'question', item:'coin'},
+        {x:1092, y:340, w:32, h:32, type:'brick'},
+        mover(1240, 300, 80, 20, 'y', 60, 0.02, 3),
+        {x:1400, y:250, w:96, h:20, type:'platform'},
+    ],
+    enemies: [
+        {x:360, y:228, type:'goomba'},{x:640, y:188, type:'koopa'},
+        {x:1100, y:168, type:'goomba'},{x:1420, y:218, type:'koopa'},
+    ],
+    coins: [
+        {x:230, y:310},{x:370, y:230},{x:770, y:270},{x:1190, y:310},{x:1450, y:220},
+    ],
+    hazards: [],
+    flag: {x:1650, y:250, height:170}
+};
+
+// ============================================================
+//  STAGE 2-1 — bawah tanah gelap, terowongan sempit & langit-langit rendah
+// ============================================================
+const stage21 = {
+    name: '2-1', theme:'underground', bgColor1:'#08081a', bgColor2:'#14142e',
+    levelWidth: 1850,
+    platforms: [
+        ...groundWithGaps(1850, [[700,780]], 'ground_u'),
+        {x:0, y:120, w:1850, h:24, type:'ground_u'},
+        {x:80, y:296, w:32, h:32, type:'brick_u'},
+        {x:112, y:296, w:32, h:32, type:'question', item:'coin'},
+        {x:144, y:296, w:32, h:32, type:'brick_u'},
+        {x:280, y:220, w:96, h:24, type:'brick_u'},
+        {x:440, y:296, w:32, h:32, type:'question', item:'mushroom'},
+        {x:472, y:296, w:32, h:32, type:'brick_u'},
+        plateau(560, 100, 44, 'ground_u'),
+        mover(820, 260, 80, 20, 'x', 70, 0.02, 0, 'platform_u'),
+        {x:960, y:296, w:32, h:32, type:'question', item:'coin'},
+        {x:992, y:296, w:32, h:32, type:'brick_u'},
+        {x:1024, y:296, w:32, h:32, type:'question', item:'coin'},
+        {x:1200, y:180, w:120, h:24, type:'brick_u'},
+        {x:1400, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
+        {x:1560, y:220, w:80, h:24, type:'brick_u'},
+    ],
+    enemies: [
+        {x:160, y:392, type:'goomba'},{x:500, y:392, type:'koopa'},
+        {x:840, y:232, type:'goomba'},{x:1060, y:392, type:'koopa'},
+        {x:1250, y:392, type:'goomba'},{x:1620, y:392, type:'koopa'},
+    ],
+    coins: [
+        {x:180, y:392},{x:328, y:190},{x:1260, y:150},{x:1600, y:190},{x:1780, y:392},
+    ],
+    hazards: [],
+    flag: {x:1800, y:340, height:80}
+};
+
+// ============================================================
+//  STAGE 2-2 — kastil dengan tangga besar & bola api berputar
+// ============================================================
+const stage22 = {
+    name: '2-2', theme:'castle', bgColor1:'#1a0a0a', bgColor2:'#3a1414',
+    levelWidth: 1950,
+    platforms: [
+        ...groundWithGaps(1950, [[560,650],[1250,1340]], 'ground_c'),
+        {x:100, y:296, w:32, h:32, type:'question', item:'coin'},
+        {x:132, y:296, w:32, h:32, type:'brick_c'},
+        plateau(260, 140, 72, 'ground_c'),
+        {x:700, y:296, w:32, h:32, type:'brick_c'},
+        {x:732, y:296, w:32, h:32, type:'question', item:'mushroom'},
+        {x:764, y:296, w:32, h:32, type:'brick_c'},
+        mover(900, 250, 90, 20, 'x', 80, 0.017, 0, 'platform_c'),
+        ...staircase(1400, 5, 1, 'castle'),
+        ...staircase(1560, 5, -1, 'castle'),
+        {x:1720, y:GROUND_Y, w:230, h:60, type:'ground_c'},
+    ],
+    enemies: [
+        {x:180, y:392, type:'goomba'},{x:300, y:392-72, type:'koopa'},
+        {x:700, y:392, type:'goomba'},{x:780, y:392, type:'koopa'},
+        {x:1440, y:392, type:'goomba'},{x:1600, y:392, type:'koopa'},
+    ],
+    coins: [
+        {x:280, y:250},{x:900, y:190},{x:1800, y:392},
+    ],
+    hazards: [
+        firebar(500, GROUND_Y-40, 80, 0.045, 1),
+        firebar(1150, GROUND_Y-40, 90, 0.035, -1),
     ],
     flag: {x:1830, y:340, height:80}
 };
 
-const stage13 = {
-    name: '1-3', theme:'overworld', bgColor1:'#5C94FC', bgColor2:'#8fb8ff',
-    levelWidth: 1550,
-    platforms: [
-        ...groundWithGaps(1550, [[420,520],[900,1000]]),
-        {x:100, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:200, y:340, w:80, h:20, type:'platform'},
-        {x:340, y:260, w:64, h:20, type:'platform'},
-        {x:600, y:296, w:32, h:32, type:'brick'},
-        {x:632, y:296, w:32, h:32, type:'question', item:'mushroom'},
-        {x:664, y:296, w:32, h:32, type:'brick'},
-        {x:740, y:240, w:80, h:20, type:'platform'},
-        {x:1060, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:1092, y:296, w:32, h:32, type:'brick'},
-        {x:1160, y:340, w:96, h:20, type:'platform'},
-        ...staircase(1300, 4, 1, 'gnd'),
-    ],
-    enemies: [
-        {x:120, y:392, type:'goomba'},{x:640, y:392, type:'goomba'},
-        {x:760, y:392, type:'goomba'},{x:1030, y:392, type:'goomba'},
-        {x:1150, y:392, type:'goomba'},
-    ],
-    coins: [
-        {x:230, y:310},{x:370, y:230},{x:770, y:210},{x:1190, y:310},
-    ],
-    flag: {x:1480, y:250, height:170}
-};
-
-const stage21 = {
-    name: '2-1', theme:'underground', bgColor1:'#0a0a1a', bgColor2:'#1a1a3a',
-    levelWidth: 1700,
-    platforms: [
-        ...groundWithGaps(1700, [[640,720]], 'ground_u'),
-        {x:80, y:296, w:32, h:32, type:'brick_u'},
-        {x:112, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:144, y:296, w:32, h:32, type:'brick_u'},
-        {x:280, y:340, w:96, h:20, type:'platform_u'},
-        {x:440, y:296, w:32, h:32, type:'question', item:'mushroom'},
-        {x:472, y:296, w:32, h:32, type:'brick_u'},
-        {x:800, y:260, w:80, h:20, type:'platform_u'},
-        {x:960, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:992, y:296, w:32, h:32, type:'brick_u'},
-        {x:1024, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:1200, y:340, w:120, h:20, type:'platform_u'},
-        {x:1400, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
-    ],
-    enemies: [
-        {x:160, y:392, type:'goomba'},{x:500, y:392, type:'goomba'},
-        {x:820, y:232, type:'goomba'},{x:1060, y:392, type:'goomba'},
-        {x:1250, y:392, type:'goomba'},
-    ],
-    coins: [
-        {x:180, y:392},{x:520, y:392},{x:1080, y:392},{x:1580, y:392},
-    ],
-    flag: {x:1620, y:340, height:80}
-};
-
-const stage22 = {
-    name: '2-2', theme:'castle', bgColor1:'#1a0a0a', bgColor2:'#3a1414',
-    levelWidth: 1750,
-    platforms: [
-        ...groundWithGaps(1750, [[500,580],[1100,1190]], 'ground_c'),
-        {x:100, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:132, y:296, w:32, h:32, type:'brick_c'},
-        {x:250, y:250, w:80, h:20, type:'platform_c'},
-        {x:660, y:296, w:32, h:32, type:'brick_c'},
-        {x:692, y:296, w:32, h:32, type:'question', item:'mushroom'},
-        {x:724, y:296, w:32, h:32, type:'brick_c'},
-        {x:850, y:230, w:64, h:20, type:'platform_c'},
-        ...staircase(1250, 5, 1, 'castle'),
-        ...staircase(1410, 5, -1, 'castle'),
-        {x:1570, y:GROUND_Y, w:180, h:60, type:'ground_c'},
-    ],
-    enemies: [
-        {x:180, y:392, type:'goomba'},{x:700, y:392, type:'goomba'},
-        {x:780, y:392, type:'goomba'},{x:1300, y:392, type:'goomba'},
-    ],
-    coins: [
-        {x:280, y:210},{x:900, y:190},{x:1660, y:392},
-    ],
-    flag: {x:1690, y:340, height:80}
-};
-
+// ============================================================
+//  STAGE 3-1 — senja: banyak pipa naik + tangga panjang, tempo lebih cepat
+// ============================================================
 const stage31 = {
     name: '3-1', theme:'sunset', bgColor1:'#e0703a', bgColor2:'#ffb85a',
-    levelWidth: 2000,
+    levelWidth: 2150,
     platforms: [
-        ...groundWithGaps(2000, [[440,540],[1000,1120]]),
+        ...groundWithGaps(2150, [[440,540],[1080,1200]]),
         {x:100, y:296, w:32, h:32, type:'question', item:'coin'},
         {x:132, y:296, w:32, h:32, type:'brick'},
-        {x:220, y:340, w:80, h:20, type:'platform'},
+        mover(260, 300, 80, 20, 'y', 60, 0.02, 0),
         {x:600, y:GROUND_Y-64, w:56, h:64, type:'pipe'},
         {x:680, y:GROUND_Y-96, w:56, h:96, type:'pipe'},
         {x:760, y:GROUND_Y-128, w:56, h:128, type:'pipe'},
-        {x:1200, y:296, w:32, h:32, type:'question', item:'coin'},
-        {x:1232, y:296, w:32, h:32, type:'brick'},
-        {x:1264, y:296, w:32, h:32, type:'question', item:'mushroom'},
-        {x:1400, y:250, w:96, h:20, type:'platform'},
-        ...staircase(1600, 5, 1, 'gnd'),
-        ...staircase(1760, 5, -1, 'gnd'),
-        {x:1920, y:GROUND_Y, w:80, h:60, type:'ground'},
+        plateau(900, 80, 40),
+        mover(1260, 260, 90, 20, 'x', 90, 0.017, 2),
+        {x:1420, y:296, w:32, h:32, type:'question', item:'coin'},
+        {x:1452, y:296, w:32, h:32, type:'brick'},
+        {x:1484, y:296, w:32, h:32, type:'question', item:'mushroom'},
+        ...staircase(1650, 5, 1, 'gnd'),
+        ...staircase(1810, 5, -1, 'gnd'),
+        {x:1970, y:GROUND_Y, w:180, h:60, type:'ground'},
     ],
     enemies: [
-        {x:160, y:392, type:'goomba'},{x:300, y:392, type:'goomba'},
-        {x:580, y:392, type:'goomba'},{x:900, y:392, type:'goomba'},
-        {x:980, y:392, type:'goomba'},{x:1300, y:392, type:'goomba'},
-        {x:1550, y:392, type:'goomba'},
+        {x:160, y:392, type:'goomba'},{x:300, y:392-60, type:'koopa'},
+        {x:580, y:392, type:'goomba'},{x:950, y:392, type:'koopa'},
+        {x:1230, y:392, type:'goomba'},{x:1550, y:392, type:'koopa'},
+        {x:1720, y:392, type:'goomba'},{x:1860, y:392, type:'koopa'},
     ],
     coins: [
-        {x:260, y:310},{x:1450, y:210},{x:1870, y:392},
+        {x:290, y:250},{x:1300, y:210},{x:2050, y:392},
     ],
-    flag: {x:1900, y:250, height:170}
+    hazards: [],
+    flag: {x:2080, y:250, height:170}
 };
 
 const STAGES = [stage11, stage12, stage13, stage21, stage22, stage31];
@@ -329,7 +373,8 @@ let player = {};
 let enemies = [];
 let coins = [];
 let platforms = [];
-let items = []; // jamur power-up yang sedang aktif
+let hazards = [];
+let items = [];
 let flag = {};
 let camera = {x: 0};
 let gameOver = false;
@@ -352,13 +397,15 @@ function buildScenery(levelWidth) {
 
 function loadStage(index) {
     const stage = STAGES[index];
-    platforms = stage.platforms.map(p => ({...p, used: false, bump: 0}));
+    platforms = stage.platforms.map(p => ({...p, used: false, bump: 0, move: p.move ? {...p.move} : null, dx:0, dy:0}));
     enemies = stage.enemies.map(e => ({
         ...e, alive: true, squish: 0,
-        vx: (Math.random() > 0.5 ? 1 : -1) * (0.7 + Math.random() * 0.5),
+        koopaState: e.type === 'koopa' ? 'walk' : null,
+        vx: (Math.random() > 0.5 ? 1 : -1) * (e.type === 'koopa' ? 0.6 + Math.random()*0.4 : 0.7 + Math.random() * 0.5),
         vy: 0, onGround: false, walkPhase: Math.random()*10
     }));
     coins = stage.coins.map(c => ({...c, collected: false}));
+    hazards = (stage.hazards || []).map(h => ({...h}));
     items = [];
     flag = {...stage.flag};
     buildScenery(stage.levelWidth);
@@ -419,7 +466,7 @@ function updateCamera() {
     let targetCam = player.x - 400;
     if (targetCam < 0) targetCam = 0;
     if (targetCam > maxCam) targetCam = maxCam;
-    camera.x += (targetCam - camera.x) * 0.14;
+    camera.x += (targetCam - camera.x) * 0.1;
 }
 
 function growPlayer() {
@@ -442,6 +489,78 @@ function shrinkPlayer() {
     player.y += (oldH - SMALL_H);
     player.invincible = 90;
     updateUI();
+}
+
+// player kena musuh / bahaya: kalau besar jadi kecil, kalau kecil mati
+function damagePlayer() {
+    if (player.invincible > 0 || player.dead) return;
+    if (player.size === 'big') {
+        shrinkPlayer();
+        addParticles(player.x + player.w/2, player.y + player.h/2, '#ff5050', 10);
+    } else {
+        player.dead = true; player.vy = -8; deathTimer = 0;
+        player.lives--; updateUI();
+    }
+}
+
+// ============================================================
+//  MOVING PLATFORMS
+// ============================================================
+function updateMovers() {
+    for (const p of platforms) {
+        if (!p.move) { p.dx = 0; p.dy = 0; continue; }
+        const t = frameCount * p.move.speed + p.move.phase;
+        const offset = Math.sin(t) * p.move.range;
+        const newX = p.move.axis === 'x' ? p.move.baseX + offset : p.x;
+        const newY = p.move.axis === 'y' ? p.move.baseY + offset : p.y;
+        p.dx = newX - p.x; p.dy = newY - p.y;
+        p.x = newX; p.y = newY;
+    }
+}
+
+// ============================================================
+//  HAZARDS (bola api berputar)
+// ============================================================
+function updateHazards() {
+    for (const h of hazards) {
+        if (h.type === 'firebar') {
+            h.angle += h.speed;
+            if (!player.dead && !player.flagSliding && !player.walkingToCastle) {
+                const segs = 4;
+                for (let i = 1; i <= segs; i++) {
+                    const r = (h.length / segs) * i;
+                    const bx = h.x + Math.cos(h.angle) * r;
+                    const by = h.y + Math.sin(h.angle) * r;
+                    const dx = (player.x + player.w/2) - bx;
+                    const dy = (player.y + player.h/2) - by;
+                    if (Math.hypot(dx, dy) < 15) { damagePlayer(); break; }
+                }
+            }
+        }
+    }
+}
+
+function drawHazards() {
+    for (const h of hazards) {
+        if (h.type === 'firebar') {
+            const hx = h.x - camera.x;
+            if (hx < -h.length-20 || hx > W+h.length+20) continue;
+            ctx.fillStyle = PAL.fireRod;
+            ctx.beginPath(); ctx.arc(hx, h.y, 6, 0, Math.PI*2); ctx.fill();
+            const segs = 4;
+            for (let i = 1; i <= segs; i++) {
+                const r = (h.length / segs) * i;
+                const bx = hx + Math.cos(h.angle) * r;
+                const by = h.y + Math.sin(h.angle) * r;
+                ctx.fillStyle = PAL.fireOuter;
+                ctx.beginPath(); ctx.arc(bx, by, 11, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = PAL.fireMid;
+                ctx.beginPath(); ctx.arc(bx, by, 7.5, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = PAL.fireCore;
+                ctx.beginPath(); ctx.arc(bx, by, 4, 0, Math.PI*2); ctx.fill();
+            }
+        }
+    }
 }
 
 // ============================================================
@@ -474,8 +593,10 @@ function update() {
         return;
     }
 
+    updateMovers();
+
     if (player.flagSliding) {
-        player.y += 3.4;
+        player.y += 3.2;
         player.x = flag.x - player.w / 2;
         const bottom = GROUND_Y - player.h;
         if (player.y >= bottom) {
@@ -487,8 +608,8 @@ function update() {
     }
 
     if (player.walkingToCastle) {
-        player.walkTimer--; player.x += 2.2;
-        player.walkPhase += 0.35;
+        player.walkTimer--; player.x += 2.0;
+        player.walkPhase += 0.32;
         updateCamera(); updateParticles();
         if (player.walkTimer <= 0) {
             player.walkingToCastle = false; winScreen = true;
@@ -505,7 +626,6 @@ function update() {
     const accel = running ? RUN_ACCEL : ACCEL;
     const maxSpeed = running ? MAX_RUN_SPEED : MAX_WALK_SPEED;
 
-    // deteksi skid: berbalik arah cepat saat di darat
     player.skid = player.onGround && moveX !== 0 && player.vx !== 0 &&
                   Math.sign(moveX) !== Math.sign(player.vx) && Math.abs(player.vx) > 1.5;
 
@@ -518,12 +638,10 @@ function update() {
         if (Math.abs(player.vx) < 0.08) player.vx = 0;
     }
 
-    // gerak kaki halus & terus menerus (bukan loncat 2 frame)
     if (player.onGround && Math.abs(player.vx) > 0.2) {
-        player.walkPhase += Math.min(Math.abs(player.vx) * 0.11 + 0.08, 0.9);
+        player.walkPhase += Math.min(Math.abs(player.vx) * 0.1 + 0.07, 0.75);
     }
 
-    // coyote time + jump buffer -> lompatan terasa lebih responsif & tidak kaku
     if (player.onGround) player.coyote = COYOTE_FRAMES; else if (player.coyote > 0) player.coyote--;
     if (keys['z'] || keys['arrowup']) player.jumpBuffer = JUMP_BUFFER_FRAMES; else if (player.jumpBuffer > 0) player.jumpBuffer--;
 
@@ -555,6 +673,7 @@ function update() {
         if (rectCollide(player, p)) {
             if (player.vy > 0) {
                 player.y = p.y - player.h; player.vy = 0; player.onGround = true;
+                if (p.move && p.move.axis === 'x') player.x += p.dx;
                 if (!wasOnGround) addParticles(player.x+player.w/2, player.y+player.h, 'rgba(255,255,255,0.5)', 3);
             } else if (player.vy < 0) {
                 player.y = p.y + p.h; player.vy = 0;
@@ -580,6 +699,7 @@ function update() {
 
     updateItems();
     updateEnemies();
+    updateHazards();
 
     if (!player.dead && !player.flagSliding) {
         const dx = player.x + player.w/2 - flag.x;
@@ -658,7 +778,7 @@ function updateEnemies() {
         if (!e.alive) continue;
         if (e.squish > 0) { e.squish--; if (e.squish <= 0) e.alive = false; continue; }
 
-        e.walkPhase += 0.14;
+        e.walkPhase += (e.koopaState === 'slide') ? 0.5 : 0.14;
         e.x += e.vx;
         e.vy += GRAVITY;
         e.y += e.vy;
@@ -675,24 +795,60 @@ function updateEnemies() {
 
         if (e.y > H + 80) { e.alive = false; continue; }
 
-        if (!player.invincible && !player.dead && rectCollide(player, e)) {
-            if (player.vy > 0 && player.y + player.h - e.y < 30) {
-                e.squish = 14; e.vx = 0;
-                player.vy = -8; player.score += 500; updateUI();
-                addParticles(e.x + e.w/2, e.y + e.h/2, PAL.goombaDark, 12);
-            } else if (player.size === 'big') {
-                shrinkPlayer();
-                addParticles(player.x + player.w/2, player.y + player.h/2, '#ff5050', 10);
-            } else {
-                player.dead = true; player.vy = -8; deathTimer = 0;
-                player.lives--; updateUI();
+        // cangkang koopa yang meluncur membunuh musuh lain yang disentuh
+        if (e.type === 'koopa' && e.koopaState === 'slide') {
+            for (const o of enemies) {
+                if (o === e || !o.alive || o.squish > 0) continue;
+                if (o.type === 'koopa' && o.koopaState === 'slide') continue;
+                if (rectCollide(e, o)) {
+                    o.squish = 14; o.vx = 0;
+                    player.score += 200; updateUI();
+                    addParticles(o.x + o.w/2, o.y + o.h/2, PAL.goombaDark, 10);
+                }
+            }
+        }
+
+        if (!player.dead && rectCollide(player, e)) {
+            const stomping = player.vy > 0 && player.y + player.h - e.y < 30;
+
+            if (e.type === 'goomba') {
+                if (stomping) {
+                    e.squish = 14; e.vx = 0;
+                    player.vy = -8; player.score += 500; updateUI();
+                    addParticles(e.x + e.w/2, e.y + e.h/2, PAL.goombaDark, 12);
+                } else {
+                    damagePlayer();
+                }
+            } else if (e.type === 'koopa') {
+                const kickDir = (player.x + player.w/2 < e.x + e.w/2) ? 1 : -1;
+                if (stomping) {
+                    if (e.koopaState === 'walk') {
+                        e.koopaState = 'idle'; e.vx = 0;
+                        player.vy = -7.5; player.score += 100; updateUI();
+                    } else if (e.koopaState === 'idle') {
+                        e.koopaState = 'slide'; e.vx = 4.4 * kickDir;
+                        player.vy = -7.5; player.score += 100; updateUI();
+                    } else {
+                        e.koopaState = 'idle'; e.vx = 0;
+                        player.vy = -7.5; player.score += 100; updateUI();
+                    }
+                    addParticles(e.x + e.w/2, e.y + e.h/2, PAL.koopaGreenDark, 8);
+                } else {
+                    if (e.koopaState === 'idle') {
+                        e.koopaState = 'slide'; e.vx = 4.4 * kickDir;
+                        player.score += 50; updateUI();
+                        addParticles(e.x + e.w/2, e.y + e.h/2, PAL.koopaGreenDark, 6);
+                    } else {
+                        damagePlayer();
+                    }
+                }
             }
         }
     }
 }
 
 // ============================================================
-//  DRAW HELPERS - SPRITES (kurva halus, shading berlapis)
+//  DRAW HELPERS - SPRITES
 // ============================================================
 function roundRect(x,y,w,h,r){
     ctx.beginPath();
@@ -712,9 +868,7 @@ function drawMario(dx, dy, w, h, facing, legPhase, onGround, jumping, skid, big,
 
     const legSwing = jumping ? 0 : (onGround ? Math.sin(legPhase) * 5 : 0);
     const armUp = jumping;
-    const bodyH = big ? 15 + 12 : 15; // sedikit lebih panjang saat besar (skala sudah menangani sisanya)
 
-    // sepatu
     ctx.fillStyle = PAL.hairDark;
     if (jumping) { roundRect(-9.5,11,9,7,2); ctx.fill(); roundRect(1.5,11,9,7,2); ctx.fill(); }
     else if (skid) { roundRect(-11,11,20,7,2); ctx.fill(); }
@@ -723,7 +877,6 @@ function drawMario(dx, dy, w, h, facing, legPhase, onGround, jumping, skid, big,
         roundRect(1-legSwing*0.6, 11, 9, 7, 2); ctx.fill();
     }
 
-    // celana overall (kaki + badan)
     ctx.fillStyle = PAL.marioBlue;
     if (jumping) { roundRect(-8,-2,7,14,2); ctx.fill(); roundRect(1,-2,7,14,2); ctx.fill(); }
     else if (skid) { roundRect(-9,-2,18,14,2); ctx.fill(); }
@@ -733,22 +886,18 @@ function drawMario(dx, dy, w, h, facing, legPhase, onGround, jumping, skid, big,
     }
     roundRect(-9, -5, 18, 10, 3); ctx.fill();
 
-    // bayangan sisi badan
     ctx.fillStyle = PAL.marioBlueDark;
     roundRect(-9,-5,4,10,2); ctx.fill();
 
-    // kancing kuning
     ctx.fillStyle = PAL.buttonYellow;
     ctx.beginPath(); ctx.arc(-5,-4,1.7,0,7); ctx.fill();
     ctx.beginPath(); ctx.arc(4,-4,1.7,0,7); ctx.fill();
 
-    // lengan baju (mengayun berlawanan arah kaki)
     const armSwing = jumping ? 0 : Math.sin(legPhase + Math.PI) * 3;
     ctx.fillStyle = PAL.marioRed;
     if (armUp) { roundRect(-14,-15,6,11,2); ctx.fill(); roundRect(8,-4,6,9,2); ctx.fill(); }
     else { roundRect(-13, -4+armSwing*0.4, 6, 9, 2); ctx.fill(); roundRect(7, -4-armSwing*0.4, 6, 9, 2); ctx.fill(); }
 
-    // sarung tangan putih
     ctx.fillStyle = PAL.white;
     if (armUp) { ctx.beginPath(); ctx.arc(-11,-18,3.4,0,7); ctx.fill(); }
     else {
@@ -756,31 +905,24 @@ function drawMario(dx, dy, w, h, facing, legPhase, onGround, jumping, skid, big,
         ctx.beginPath(); ctx.arc(11, 4-armSwing*0.4, 3.2, 0, 7); ctx.fill();
     }
 
-    // dada kemeja merah
     ctx.fillStyle = PAL.marioRed;
     roundRect(-9, -9, 18, 5, 2); ctx.fill();
 
-    // wajah
     ctx.fillStyle = PAL.skin;
     roundRect(-8, -21, 17, 13, 4); ctx.fill();
     ctx.fillStyle = PAL.skinShade;
     roundRect(-8, -12, 17, 3, 2); ctx.fill();
 
-    // rambut samping / cambang
     ctx.fillStyle = PAL.hair;
     roundRect(-9, -17, 4, 8, 2); ctx.fill();
-    // kumis
     ctx.fillStyle = PAL.hairDark;
     roundRect(-3, -12, 12, 3, 1); ctx.fill();
     roundRect(-4, -14, 5, 3, 1); ctx.fill();
-    // hidung
     ctx.fillStyle = PAL.skin;
     ctx.beginPath(); ctx.ellipse(9,-13,4,3.4,0,0,7); ctx.fill();
-    // mata
     ctx.fillStyle = '#1a1a1a';
     ctx.beginPath(); ctx.arc(2,-17,1.8,0,7); ctx.fill();
 
-    // topi
     ctx.fillStyle = PAL.marioRed;
     roundRect(-9, -25, 18, 5, 2); ctx.fill();
     roundRect(-9, -21, 23, 4, 3); ctx.fill();
@@ -800,7 +942,6 @@ function drawGoomba(dx, dy, w, h, phase, squish) {
     ctx.scale(1 + sq * 0.5, 1 - sq * 0.7);
     ctx.translate(0, h/2 * sq * 0.6);
 
-    // badan bulat dengan bayangan bawah untuk kesan 3D
     ctx.fillStyle = PAL.goombaDark;
     ctx.beginPath(); ctx.ellipse(0, h*0.12, w/2, h/2 * 0.62, 0, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle = PAL.goomba;
@@ -819,7 +960,6 @@ function drawGoomba(dx, dy, w, h, phase, squish) {
         roundRect(-w/2 + 1 + footShift, h/2 - 6, w/2 - 3, 6, 2); ctx.fill();
         roundRect(1 - footShift, h/2 - 6, w/2 - 3, 6, 2); ctx.fill();
 
-        // alis marah khas goomba
         ctx.strokeStyle = '#2a1608'; ctx.lineWidth = 2.2; ctx.lineCap='round';
         ctx.beginPath(); ctx.moveTo(-w/2+3,-h/2+9); ctx.lineTo(-1,-h/2+13); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(w/2-3,-h/2+9); ctx.lineTo(1,-h/2+13); ctx.stroke();
@@ -833,6 +973,58 @@ function drawGoomba(dx, dy, w, h, phase, squish) {
         ctx.strokeStyle = '#2a1608'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(-w/2+5,-2); ctx.lineTo(-w/2+11,4); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(-w/2+11,-2); ctx.lineTo(-w/2+5,4); ctx.stroke();
+    }
+    ctx.restore();
+}
+
+function drawKoopa(dx, dy, w, h, phase, state, vx) {
+    ctx.save();
+    ctx.translate(dx + w/2, dy + h/2);
+
+    if (state === 'walk') {
+        const footShift = Math.sin(phase) * 2.5;
+        ctx.fillStyle = PAL.koopaFoot;
+        roundRect(-w/2+2+footShift, h/2-6, w/2-4, 6, 2); ctx.fill();
+        roundRect(2-footShift, h/2-6, w/2-4, 6, 2); ctx.fill();
+
+        // badan & cangkang
+        ctx.fillStyle = PAL.koopaGreenDark;
+        ctx.beginPath(); ctx.ellipse(0, 1, w/2-2, h/2-4, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = PAL.koopaShell;
+        ctx.beginPath(); ctx.ellipse(0, -1, w/2-4, h/2-8, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = PAL.koopaShellLight;
+        ctx.beginPath(); ctx.ellipse(0, -4, w/2-8, h/2-14, 0, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = PAL.koopaGreenDark; ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.moveTo(-w/2+6,-2); ctx.lineTo(w/2-6,-2); ctx.stroke();
+
+        // leher & kepala
+        ctx.fillStyle = PAL.koopaBelly;
+        roundRect(-4, -h/2-2, 8, 10, 3); ctx.fill();
+        ctx.fillStyle = PAL.koopaGreen;
+        ctx.beginPath(); ctx.ellipse(vx >= 0 ? 3 : -3, -h/2-6, 7, 6, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(vx>=0? 6:-6, -h/2-7, 2.2, 0, 7); ctx.fill();
+        ctx.fillStyle = '#1a1a1a';
+        ctx.beginPath(); ctx.arc(vx>=0? 6.8:-6.8, -h/2-7, 1.1, 0, 7); ctx.fill();
+    } else {
+        // cangkang saja (idle / meluncur)
+        const rot = state === 'slide' ? phase : 0;
+        ctx.rotate(rot);
+        ctx.fillStyle = PAL.koopaGreenDark;
+        ctx.beginPath(); ctx.ellipse(0, 2, w/2-1, h/2-3, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = PAL.koopaShell;
+        ctx.beginPath(); ctx.ellipse(0, 0, w/2-3, h/2-6, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = PAL.koopaShellLight;
+        ctx.beginPath(); ctx.ellipse(0, -3, w/2-7, h/2-11, 0, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = PAL.koopaGreenDark; ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(-w/2+4,0); ctx.lineTo(w/2-4,0);
+        ctx.moveTo(0,-h/2+5); ctx.lineTo(0,h/2-5);
+        ctx.stroke();
+        if (state === 'slide') {
+            ctx.fillStyle = 'rgba(255,255,255,0.35)';
+            ctx.beginPath(); ctx.ellipse(-4,-4,4,3,0,0,Math.PI*2); ctx.fill();
+        }
     }
     ctx.restore();
 }
@@ -882,6 +1074,7 @@ function draw() {
 
     const underground = stage.theme === 'underground';
     const castle = stage.theme === 'castle';
+    const sky = stage.theme === 'sky';
 
     if (!underground && !castle) {
         const cloudPositions = [
@@ -899,22 +1092,32 @@ function draw() {
             ctx.arc(cx + 30*c.s, c.y, 25*c.s, 0, Math.PI*2);
             ctx.fill();
         }
-        ctx.fillStyle = 'rgba(0,168,0,0.35)';
-        for (const hl of hills) {
-            const hx = hl.x - camera.x * 0.6;
-            if (hx < -120 || hx > W + 120) continue;
-            ctx.beginPath(); ctx.arc(hx, GROUND_Y + 10, hl.r, Math.PI, 0); ctx.fill();
-        }
-        ctx.fillStyle = '#00A800';
-        for (const b of bushes) {
-            const bx = b.x - camera.x * 0.85;
-            if (bx < -60 || bx > W + 60) continue;
-            const s = b.scale;
-            ctx.beginPath();
-            ctx.arc(bx, GROUND_Y - 6, 14*s, 0, Math.PI*2);
-            ctx.arc(bx + 16*s, GROUND_Y - 10, 16*s, 0, Math.PI*2);
-            ctx.arc(bx + 32*s, GROUND_Y - 6, 14*s, 0, Math.PI*2);
-            ctx.fill();
+        if (!sky) {
+            ctx.fillStyle = 'rgba(0,168,0,0.35)';
+            for (const hl of hills) {
+                const hx = hl.x - camera.x * 0.6;
+                if (hx < -120 || hx > W + 120) continue;
+                ctx.beginPath(); ctx.arc(hx, GROUND_Y + 10, hl.r, Math.PI, 0); ctx.fill();
+            }
+            ctx.fillStyle = '#00A800';
+            for (const b of bushes) {
+                const bx = b.x - camera.x * 0.85;
+                if (bx < -60 || bx > W + 60) continue;
+                const s = b.scale;
+                ctx.beginPath();
+                ctx.arc(bx, GROUND_Y - 6, 14*s, 0, Math.PI*2);
+                ctx.arc(bx + 16*s, GROUND_Y - 10, 16*s, 0, Math.PI*2);
+                ctx.arc(bx + 32*s, GROUND_Y - 6, 14*s, 0, Math.PI*2);
+                ctx.fill();
+            }
+        } else {
+            // langit terbuka: tambahan awan jauh untuk kesan melayang tinggi
+            ctx.fillStyle = 'rgba(255,255,255,0.5)';
+            for (let i=0;i<10;i++) {
+                const cx = (i*300+150) - camera.x*0.15;
+                if (cx < -100 || cx > W+100) continue;
+                ctx.beginPath(); ctx.arc(cx, 400 + (i%3)*20, 40, 0, Math.PI*2); ctx.fill();
+            }
         }
     } else {
         ctx.fillStyle = underground ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.25)';
@@ -923,6 +1126,13 @@ function draw() {
             for (let y = 0; y < H; y += 40) {
                 ctx.strokeStyle = 'rgba(255,255,255,0.06)';
                 ctx.strokeRect(x, y, 40, 40);
+            }
+        }
+        if (castle) {
+            ctx.fillStyle = 'rgba(255,120,60,0.06)';
+            for (let i=0;i<6;i++) {
+                const cx = i*300 - (camera.x*0.3 % 300);
+                ctx.beginPath(); ctx.moveTo(cx, H); ctx.lineTo(cx+40, H-120); ctx.lineTo(cx+80, H); ctx.fill();
             }
         }
     }
@@ -983,6 +1193,10 @@ function draw() {
             ctx.fillStyle = c1; ctx.fillRect(dx, p.y, p.w, p.h);
             ctx.fillStyle = 'rgba(0,0,0,0.25)';
             ctx.fillRect(dx, p.y, p.w, 2); ctx.fillRect(dx, p.y+p.h-2, p.w, 2);
+            if (p.move) {
+                ctx.fillStyle = 'rgba(255,255,255,0.35)';
+                ctx.fillRect(dx+p.w/2-8, p.y+p.h/2-1, 16, 2);
+            }
         } else if (p.type === 'pipe') {
             ctx.fillStyle = PAL.pipeDark;
             ctx.fillRect(dx-3, p.y-10, p.w+6, 10);
@@ -1017,9 +1231,11 @@ function draw() {
         if (!e.alive) continue;
         const dx = drawX(e.x);
         if (dx < -60 || dx > W+40) continue;
-        drawGoomba(dx, e.y, 28, 26, e.walkPhase, e.squish);
+        if (e.type === 'koopa') drawKoopa(dx, e.y, 28, 34, e.walkPhase, e.koopaState, e.vx);
+        else drawGoomba(dx, e.y, 28, 26, e.walkPhase, e.squish);
     }
 
+    drawHazards();
     drawCastle(drawX(flag.x + 90));
 
     const fdx = drawX(flag.x);
